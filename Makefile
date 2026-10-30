@@ -16,6 +16,7 @@ test:
 	@$(MAKE) --no-print-directory probe
 	@python3 research/test_nx300m_host_ycc420_probe_cli.py
 	@python3 research/test_nx300m_tizen_elf_audit.py
+	@python3 research/test_nx300m_capture_elf_surface_audit.py
 	@sh -n scripts/nx300m_tizen_readonly_probe.sh
 	@sh -n scripts/build_tizen_efl.sh
 	@sh scripts/nx300m_tizen_readonly_probe.sh --help

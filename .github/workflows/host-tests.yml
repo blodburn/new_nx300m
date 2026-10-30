@@ -7,5 +7,5 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Build and run 15 C suites including EFL event simulation and ARM ELF tests
+      - name: Test 15 C suites plus 23 Python GUI/ELF cases
         run: make test

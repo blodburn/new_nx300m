@@ -26,6 +26,12 @@ JPEG test encoder verification includes **odd 33×25 dimensions**, end-to-end de
 
 **Important:** Producing a standard 4:2:0 JPEG bitstream does *not* establish compatibility with Samsung's proprietary 4:2:0 capture-memory format, DMA ownership, original JPEG encoder, or EXIF/MakerNotes. There is no on-camera integration yet.
 
+## Picture Wizard symbols found in an offline capture library
+
+An offline, read-only ELF metadata scan of a *partial research extraction* found four Picture Wizard-related dynamic symbol names in `libcapture-fw-slpcam-nx300.so`, including `CProcessParameter::GetPictureWizardMode()` and `GetPictureWizardParameter(...)`. It also found `convertUserData_DIALMODE(...)`, which is **not evidence of a hardware dial EFL callback**. Nine capture libraries were inspected, with 13 dependency references resolving within the small research sample and 84 missing from the sample. These counts do not imply missing libraries in full firmware. **Firmware 1.14 identity, physical device behavior, and safe UI/ISP calls are unverified.** See [the evidence and next verification gates](docs/NX300M_PICTURE_WIZARD_SYMBOL_EVIDENCE.md).
+
+`research/nx300m_capture_elf_surface_audit.py` scans only ELF dynamic metadata with `readelf` and `c++filt`. Seven fixture unit tests were added to `make test` (**15 C regression executables and 23 Python tests**); no proprietary ELF or firmware is distributed.
+
 ## Important limitations
 
 The source-backed analysis was performed using an NX300M **MFW 1.1 research firmware**; compatibility with an actual device running **firmware 1.14 is unverified**. There is no validated ARM firmware hook, no native camera SRAM/DMA adapter, no supported full-brick recovery, and no verified preservation of Samsung EXIF/MakerNotes on physical camera output. The Y/C byte layout, colorspace and stride need to be measured on an actual camera before any hardware bridge could be built.
