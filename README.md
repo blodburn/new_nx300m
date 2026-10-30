@@ -34,7 +34,7 @@ The public source tree intentionally excludes firmware images, extracted proprie
 - `research/nx300m_linear_prejpeg.[ch]` — high-bit-depth exposure/WB/shoulder
 - `research/nx300m_film_menu.[ch]` — saved fixed 13-look selector
 - `research/nx300m_host_jpeg_sink.[ch]` — offline scanline-to-JPEG writer with atomic create-only publication
-- `[REDACTED].[ch]` — offline two-region Y/C type-1 geometry study
+- `research/nx300m_host_native420_bridge.[ch]` — offline two-region Y/C type-1 geometry study
 - `research/test_*.c` and `research/bench_*.c` — tests and synthetic benchmarks
 
 ## License status

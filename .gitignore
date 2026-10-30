@@ -1,0 +1,22 @@
+# Generated build and test artifacts
+.build/
+outputs/
+__pycache__/
+.pytest_cache/
+*.o
+*.a
+*.so
+*.bin
+*.img
+*.DAT
+*.lfu
+*.SRW
+*.JPG
+*.JPEG
+*.jpg
+*.jpeg
+*.zip
+*.tar
+*.tar.gz
+*.7z
+.DS_Store
