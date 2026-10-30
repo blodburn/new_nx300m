@@ -54,3 +54,7 @@ Files: `research/nx300m_tizen_film_controller.[ch]`, `research/nx300m_tizen_film
 - `NX_FILM_LOG_KEYS=1` enables opt-in stderr observation of at most 32 printable EFL keyname tokens, **only in an independently authorized userspace session**. No kernel input device, serial, credentials or camera memory is accessed. It cannot create a shell.
 - Confirm or Cancel no longer silently reopens the menu; a subsequent rotation opens a fresh preview. Saving failures leave the previously selected preset unchanged.
 - New sources: `research/nx300m_tizen_keymap.[ch]`, `research/test_nx300m_tizen_keymap.c`, and the updated EFL UI. `scripts/build_tizen_efl.sh` enforces explicit sysroot inputs and ARM ELF32 EABI5 output type.
+
+## New host UI integration test
+
+`make efl-runtime-test` invokes the real EFL screen callback and its state controller through an in-process, fake host Elementary/Evas event loop. Six scenarios check that unknown keys cannot change a saved mode, explicit mapping and demo mapping are separated, preview text updates, confirm writes the chosen mode, cancel restores the old mode, a missing path causes a safe error, and the observer stops after 32 valid keynames. This test does **not** emulate actual NX300M EFL runtime, DRM, display hardware, picture wizard overlay, or the physical rotary dial. Test source: `research/test_nx300m_tizen_efl_runtime.c`.

@@ -7,5 +7,5 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Build and run 14 sanitizer suites plus Tizen UI syntax and ARM ELF tests
+      - name: Build and run 15 C suites including EFL event simulation and ARM ELF tests
         run: make test
