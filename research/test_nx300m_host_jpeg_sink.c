@@ -63,6 +63,41 @@ int main(void){
  const uint8_t sos[]={0xff,0xda};
  assert(marker_present(jpg,len,sos,sizeof(sos)));
  assert(!memcmp(raw,saved,sizeof(raw)));
+ /* Real baseline JPEG 4:2:0 with non-MCU-aligned 33x25 dimensions.
+  * SOF Y sampling 0x22 and chroma 0x11; do not conflate this
+  * interoperable JPEG bitstream with NX300M native Y/C DMA packing. */
+ char path420[128];
+ n=snprintf(path420,sizeof(path420),
+            "outputs/.nx_jpeg_420_proof_%ld.jpg",(long)getpid());
+ assert(n>0&&(size_t)n<sizeof(path420)&&access(path420,F_OK)!=0);
+ assert(nx_host_jpeg_writer_create_with_sampling(path420,NULL,0,
+                                     (nx_host_jpeg_sampling)99)==NULL);
+ w=nx_host_jpeg_writer_create_with_sampling(path420,original_exif,
+                                             sizeof(original_exif),NX_HOST_JPEG_420);
+ assert(w);
+ sink=nx_host_jpeg_writer_sink(w);
+ assert(nx_bayer_prejpeg_emit_rows(raw,H*STRIDE,STRIDE,W,H,&cal,&look,103,
+                                  &sink)==0);
+ nx_host_jpeg_writer_destroy(w);
+ uint8_t *jpeg420=NULL;size_t len420=0;
+ assert(read_bytes(path420,&jpeg420,&len420)==0&&len420>200);
+ assert(jpeg420[0]==0xff&&jpeg420[1]==0xd8);
+ assert(jpeg420[len420-2]==0xff&&jpeg420[len420-1]==0xd9);
+ const uint8_t sof420[]={0xff,0xc0,0,17,8,0,H,0,W,3,
+                         1,0x22,0,2,0x11,1,3,0x11,1};
+ assert(marker_present(jpeg420,len420,sof420,sizeof(sof420)));
+ assert(marker_present(jpeg420,len420,original_exif,sizeof(original_exif)));
+ assert(!memcmp(raw,saved,sizeof(raw)));
+ /* 4:2:0 also refuses to overwrite the existing file. */
+ w=nx_host_jpeg_writer_create_with_sampling(path420,NULL,0,NX_HOST_JPEG_420);
+ assert(w);sink=nx_host_jpeg_writer_sink(w);
+ assert(nx_bayer_prejpeg_emit_rows(raw,H*STRIDE,STRIDE,W,H,&cal,&look,103,
+                                  &sink)==-1);
+ nx_host_jpeg_writer_destroy(w);
+ uint8_t *again420=NULL;size_t lenagain420=0;
+ assert(read_bytes(path420,&again420,&lenagain420)==0&&lenagain420==len420);
+ assert(!memcmp(jpeg420,again420,len420));
+ free(jpeg420);free(again420);
  /* Original never opens file or emits a second JPEG. */
  char original_path[128];
  n=snprintf(original_path,sizeof(original_path),
@@ -93,7 +128,7 @@ int main(void){
                                   &sink)==-1);
  nx_host_jpeg_writer_destroy(w);
  assert(!memcmp(raw,saved,sizeof(raw)));
- printf("PASS HOST baseline JPEG %ux%u, Exif APP1 byte-copy, SOI/SOF/SOS/EOI, original bypass, RAW unchanged, overwrite blocked, invalid destination aborted, file=%s bytes=%zu\n",
-        W,H,path,len);
+ printf("PASS HOST JPEG 444+420 odd %ux%u, true SOF0 sampling, Exif APP1 byte-copy, SOI/SOS/EOI, original bypass, RAW unchanged, overwrite blocked, invalid destination aborted, 444_bytes=%zu 420_bytes=%zu\n",
+        W,H,len,len420);
  return 0;
 }

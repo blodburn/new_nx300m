@@ -7,7 +7,7 @@ Experimental image-processing source for investigating **Samsung NX300M** film-l
 - **13 fixed look selections:** Samsung Original passthrough, 7 experimental Fujifilm-style and 5 Leica-style looks. Brand names describe visual research targets; no manufacturer endorsement or affiliation.
 - High-bit-depth unpacked Bayer16 demosaicing, white-balance/exposure/highlight mapping before RGB8 conversion.
 - Row-stream processing instead of a full-frame RGB16/RGB8 intermediate, with transactional `begin → write_row → commit / abort` sink.
-- Host-only standalone baseline **JPEG 4:4:4** encoder for synthetic test images, **not** the NX300M's original JPEG codec.
+- Host-only standalone baseline **JPEG 4:4:4 and 4:2:0** encoder for synthetic test images, **not** the NX300M's original JPEG codec.
 - Host-only Y/C 4:2:0 staging model with explicit **experimental** CbCr / CrCb order. This does **not** establish the physical camera memory layout.
 - Regression tests for RAW byte preservation, Samsung Original no-op, pixel equality, JPEG container validity and failure rollback.
 
@@ -21,6 +21,10 @@ make bench
 ```
 
 `make test` compiles and executes 11 independent sanitizer-tested C suites and one read-only JPEG SOF parser suite. `make bench` exercises full-resolution **synthetic** images, which are not representative of camera hardware performance.
+
+JPEG test encoder verification includes **odd 33×25 dimensions**, end-to-end decode of the 4:2:0 sample, independent SOF sampling readback, unchanged RAW bytes, original-preset bypass, EXIF APP1 byte-copy, and refusal to overwrite existing images. Both JPEG modes use row scratch, not a full RGB8 image buffer. For an offline 20 MP JPEG 4:2:0 benchmark, compile the host JPEG benchmark or run `.build/bench_jpeg 420` after `make bench`.
+
+**Important:** Producing a standard 4:2:0 JPEG bitstream does *not* establish compatibility with Samsung's proprietary 4:2:0 capture-memory format, DMA ownership, original JPEG encoder, or EXIF/MakerNotes. There is no on-camera integration yet.
 
 ## Important limitations
 

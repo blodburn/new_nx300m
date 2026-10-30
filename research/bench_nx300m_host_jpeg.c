@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <string.h>
 #include <time.h>
 #include <unistd.h>
 #include <sys/stat.h>
@@ -10,9 +11,11 @@ static double elapsed(struct timespec a,struct timespec b){
  return (double)(b.tv_sec-a.tv_sec)+1.e-9*(double)(b.tv_nsec-a.tv_nsec);
 }
 int main(int argc,char **argv){
- (void)argv;
- const unsigned w=argc>1?1024u:5546u;
- const unsigned h=argc>1?768u:3714u;
+ const int small=argc>1&&strcmp(argv[1],"small")==0;
+ const nx_host_jpeg_sampling sampling=
+    argc>1&&strcmp(argv[1],"420")==0?NX_HOST_JPEG_420:NX_HOST_JPEG_444;
+ const unsigned w=small?1024u:5546u;
+ const unsigned h=small?768u:3714u;
  const size_t count=(size_t)w*h;
  uint16_t *bayer=malloc(count*sizeof(*bayer));
  if(!bayer)return 2;
@@ -27,7 +30,8 @@ int main(int argc,char **argv){
  if(n<1||(size_t)n>=sizeof(path)||access(path,F_OK)==0){
   free(bayer);return 2;
  }
- nx_host_jpeg_writer *writer=nx_host_jpeg_writer_create(path,NULL,0);
+ nx_host_jpeg_writer *writer=nx_host_jpeg_writer_create_with_sampling(
+                                  path,NULL,0,sampling);
  if(!writer){free(bayer);return 2;}
  nx_bayer_rgb8_sink sink=nx_host_jpeg_writer_sink(writer);
  struct timespec a,b;
@@ -39,7 +43,8 @@ int main(int argc,char **argv){
  if(rc||stat(path,&info)){
   free(bayer);return 1;
  }
- printf("HOST REAL JPEG 4:4:4 (not NX300M native) %ux%u: encoded_bytes=%lld; time=%.3f sec; raw_in_memory=%zu; output_frame_alloc=0; one atomic file publish=PASS\n",
+ printf("HOST REAL JPEG %s (not NX300M native) %ux%u: encoded_bytes=%lld; time=%.3f sec; raw_in_memory=%zu; output_frame_alloc=0; one atomic file publish=PASS\n",
+        sampling==NX_HOST_JPEG_420?"4:2:0":"4:4:4",
         w,h,(long long)info.st_size,elapsed(a,b),count*2u);
  if(unlink(path)){free(bayer);return 1;}
  free(bayer);

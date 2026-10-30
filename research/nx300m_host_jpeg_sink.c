@@ -11,9 +11,9 @@
 #include <errno.h>
 
 /* Host-only self-contained ISO/IEC 10918-1 baseline sequential JPEG encoder.
- * Grayscale/sRGB-compatible RGB input -> YCbCr 4:4:4 JPEG, Q=85.
+ * Grayscale/sRGB-compatible RGB input -> YCbCr JPEG 4:4:4 or 4:2:0, Q=85.
  * Uniform canonical Huffman lengths (not compression-optimal, but compliant).
- * The native Samsung 1.14 encoder's hardware 4:2:0 DMA cannot use this ABI.
+ * Native Samsung 1.14 encoder DMA format is unverified, not this host ABI.
  */
 enum { MCU=8, COMPONENTS=3 };
 typedef struct {uint16_t code;uint8_t len;} hcode;
@@ -23,7 +23,8 @@ struct nx_host_jpeg_writer {
  const uint8_t *exif;size_t exif_size;
  FILE *f;
  uint8_t *scanlines;
- unsigned width,height,row_count;
+ unsigned width,height,row_count,block_rows;
+ nx_host_jpeg_sampling sampling;
  uint32_t bitbuf;
  unsigned bitcount;
  int previous_dc[3];
@@ -105,11 +106,12 @@ static int headers(nx_host_jpeg_writer *w){
   for(unsigned i=0;i<64;i++)
    if(byte(w,w->quant[t][zigzag[i]]))return -1;
  }
- /* 3-component baseline SOF0, 4:4:4 sampling, NOT Samsung native. */
+ /* 3-component baseline SOF0, selectable 4:4:4 / 4:2:0; not camera native. */
  if(marker(w,0xc0)||be16(w,17)||byte(w,8)||be16(w,w->height)||
     be16(w,w->width)||byte(w,3))return -1;
  for(unsigned c=0;c<3;c++)
-  if(byte(w,c+1)||byte(w,0x11)||byte(w,c==0?0:1))return -1;
+  if(byte(w,c+1)||byte(w,c==0 && w->sampling==NX_HOST_JPEG_420?
+          0x22:0x11)||byte(w,c==0?0:1))return -1;
  for(unsigned kind=0;kind<2;kind++)for(unsigned t=0;t<2;t++){
   const htable *h=kind?&w->ac[t]:&w->dc[t];
   if(marker(w,0xc4)||be16(w,19+h->used)||byte(w,(kind<<4)|t)||
@@ -191,6 +193,30 @@ static int emit_block(nx_host_jpeg_writer *w,int component,
  return run&&huffman(w,&w->ac[component?1:0],0x00)?-1:0;
 }
 static int encode_rows(nx_host_jpeg_writer *w,unsigned valid_rows){
+ if(w->sampling==NX_HOST_JPEG_420){
+  /* MCU order: four Y 8x8 blocks, then one Cb and one Cr 8x8 block.
+   * Edge extension supplies pixels for partial/odd width and height MCUs.
+   * Chroma is a 2x2 average of the original RGB-derived Cb/Cr, not a
+   * reinterpretation of any native Samsung Y/C capture buffer. */
+  for(unsigned left=0;left<w->width;left+=16){
+   double lum[4][8][8],cb[8][8]={ {0} },cr[8][8]={ {0} };
+   for(unsigned y=0;y<16;y++){
+    unsigned yy=y<valid_rows?y:valid_rows-1u;
+    const uint8_t *r=w->scanlines+(size_t)yy*w->width*3u;
+    for(unsigned x=0;x<16;x++){
+     unsigned xx=left+x<w->width?left+x:w->width-1u;
+     double red=r[3u*xx],green=r[3u*xx+1],blue=r[3u*xx+2];
+     lum[(y/8u)*2u+x/8u][y%8u][x%8u]=
+       0.299*red+0.587*green+0.114*blue-128.;
+     cb[y/2u][x/2u]+=(-0.168736*red-0.331264*green+0.5*blue)*0.25;
+     cr[y/2u][x/2u]+=(0.5*red-0.418688*green-0.081312*blue)*0.25;
+    }
+   }
+   for(unsigned b=0;b<4;b++)if(emit_block(w,0,lum[b]))return -1;
+   if(emit_block(w,1,cb)||emit_block(w,2,cr))return -1;
+  }
+  return 0;
+ }
  for(unsigned left=0;left<w->width;left+=8){
   double block[3][8][8];
   for(unsigned y=0;y<8;y++){
@@ -225,7 +251,8 @@ static int start(void *user,unsigned width,unsigned height,unsigned film_id){
  w->row_count=0;w->bitbuf=0;w->bitcount=0;
  memset(w->previous_dc,0,sizeof(w->previous_dc));
  const size_t row_bytes=(size_t)width*3u;
- w->scanlines=malloc(row_bytes*8u);
+ w->block_rows=w->sampling==NX_HOST_JPEG_420?16u:8u;
+ w->scanlines=malloc(row_bytes*w->block_rows);
  if(!w->scanlines)return -1;
  size_t pathlen=strlen(w->destination);
  if(pathlen>4096 || pathlen>SIZE_MAX-16)return -1;
@@ -255,15 +282,15 @@ static int row(void *user,unsigned y,const uint8_t *rgb,size_t len){
  nx_host_jpeg_writer *w=user;
  if(!w||!w->active||!w->f||!rgb||y!=w->row_count||
     len!=(size_t)w->width*3u)return -1;
- memcpy(w->scanlines+(size_t)(y%8u)*len,rgb,len);
+ memcpy(w->scanlines+(size_t)(y%w->block_rows)*len,rgb,len);
  w->row_count++;
- if(w->row_count%8u==0&&encode_rows(w,8u))return -1;
+ if(w->row_count%w->block_rows==0&&encode_rows(w,w->block_rows))return -1;
  return 0;
 }
 static int finish(void *user){
  nx_host_jpeg_writer *w=user;
  if(!w||!w->active||!w->f||w->row_count!=w->height)return -1;
- const unsigned rem=w->row_count%8u;
+ const unsigned rem=w->row_count%w->block_rows;
  if(rem&&encode_rows(w,rem))return -1;
  if(w->bitcount){
   unsigned remaining=8u-w->bitcount;
@@ -282,7 +309,14 @@ static int finish(void *user){
 static void abort_image(void *user){discard((nx_host_jpeg_writer*)user);}
 nx_host_jpeg_writer *nx_host_jpeg_writer_create(
  const char *destination,const uint8_t *original_exif_app1,size_t exif_bytes){
- if(!destination||!destination[0]||strlen(destination)>4096||
+ return nx_host_jpeg_writer_create_with_sampling(
+   destination,original_exif_app1,exif_bytes,NX_HOST_JPEG_444);
+}
+nx_host_jpeg_writer *nx_host_jpeg_writer_create_with_sampling(
+ const char *destination,const uint8_t *original_exif_app1,size_t exif_bytes,
+ nx_host_jpeg_sampling sampling){
+ if((sampling!=NX_HOST_JPEG_444&&sampling!=NX_HOST_JPEG_420)||
+    !destination||!destination[0]||strlen(destination)>4096||
     ((exif_bytes>0)&&(!original_exif_app1||exif_bytes<6||
                       exif_bytes>65533u||
                       memcmp(original_exif_app1,"Exif\0\0",6)!=0)))
@@ -293,6 +327,7 @@ nx_host_jpeg_writer *nx_host_jpeg_writer_create(
  if(!w->destination){free(w);return NULL;}
  w->exif=original_exif_app1;
  w->exif_size=exif_bytes;
+ w->sampling=sampling;
  return w;
 }
 nx_bayer_rgb8_sink nx_host_jpeg_writer_sink(nx_host_jpeg_writer *w){
