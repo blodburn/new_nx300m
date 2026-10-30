@@ -1,5 +1,8 @@
 # NX300M — Picture Wizard 12 native modes vs 13 Film Simulator looks
 
+> **Firmware version correction (2026-10-31):** The private research file named `nx300m_mfw_1.1.bin` has an internal SLP header identifying the underlying Samsung firmware as **NX300M 1.15**. `MFW 1.1` denotes the modified firmware release, not Samsung-native firmware 1.1. This does not establish a match to target stock 1.14.
+
+
 Status: **HOST-ONLY safety policy. No firmware is installed, executed or patched.**
 
 ## Source evidence

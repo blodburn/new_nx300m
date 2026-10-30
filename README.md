@@ -44,9 +44,15 @@ The older Ghidra research shows **12 original Samsung Picture Wizard dispatches*
 
 `research/nx300m_host_capture_copy_adapter.[ch]` connects saved Film Simulator settings with the **fail-closed Picture Wizard route guard** and the host RGB filter. Unlike the older in-place research API, it validates explicit source/destination byte lengths, stride and partial overlaps, caps scratch allocation at **128 MiB**, and processes the image in a private copy. A caller-owned destination is changed **only after successful full-frame processing**. Original mode, missing/corrupt configuration, RAW-only processing, unverified RGB input and any experimental camera-source request never modify it. Source and RAW bytes remain unchanged. This is an offline RGB output, **not** a real camera JPEG/ISP hook. The new C sanitizer suite checks all 13 looks, size/overlap errors, unchanged padding and output failure paths. See [host RGB copy integration](docs/NX300M_HOST_COPY_INTEGRATION.md).
 
+## Verified SLP internal version and offline ZIP/BIN integrity
+
+The existing private reference is named `nx300m_mfw_1.1.bin`, but its **internal Samsung SLP firmware version is 1.15**, not 1.1. MFW 1.1 is the modified-release label, not the underlying Samsung native version. All **five image JAMCRC checks plus the pcache JAMCRC** passed on its 333,237,352-byte binary. This does not prove the modified image is original Samsung firmware, and it is NOT a 1.14 comparison.
+
+New read-only `research/nx300m_slp_firmware_integrity.py` reads an existing local BIN or ZIP (without extraction), rejects wrong camera models/versions and damaged/traversal archives, streams all six JAMCRC checks and SHA-256, and never modifies camera firmware. Nine synthetic tests verify corruption, bad metadata and ZIP handling; the full test suite has **17 C programs and 39 Python tests**. See [firmware SLP integrity evidence and version correction](docs/NX300M_SLP_PACKAGE_INTEGRITY.md). The original **1.14** binary remains unavailable for actual ABI comparison.
+
 ## Important limitations
 
-The source-backed analysis was performed using an NX300M **MFW 1.1 research firmware**; compatibility with an actual device running **firmware 1.14 is unverified**. There is no validated ARM firmware hook, no native camera SRAM/DMA adapter, no supported full-brick recovery, and no verified preservation of Samsung EXIF/MakerNotes on physical camera output. The Y/C byte layout, colorspace and stride need to be measured on an actual camera before any hardware bridge could be built.
+The source-backed analysis used **MFW 1.1 (a modified release based on embedded Samsung NX300M 1.15)**; compatibility with an actual device running **firmware 1.14 is unverified**. There is no validated ARM firmware hook, no native camera SRAM/DMA adapter, no supported full-brick recovery, and no verified preservation of Samsung EXIF/MakerNotes on physical camera output. The Y/C byte layout, colorspace and stride need to be measured on an actual camera before any hardware bridge could be built.
 
 The public source tree intentionally excludes firmware images, extracted proprietary shared libraries, original RAW photographs, private configuration, third-party binaries and generated image/binary artifacts.
 

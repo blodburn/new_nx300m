@@ -1,5 +1,8 @@
 # NX300M 1.14 native integration gates — NO FLASH
 
+> **Firmware version correction (2026-10-31):** The private research file named `nx300m_mfw_1.1.bin` has an internal SLP header identifying the underlying Samsung firmware as **NX300M 1.15**. `MFW 1.1` denotes the modified firmware release, not Samsung-native firmware 1.1. This does not establish a match to target stock 1.14.
+
+
 **Current release status: host-only research.** No deployable camera firmware, ARM patch, native capture hook, or tested recovery mechanism has been produced.
 
 ## Verified in the research environment

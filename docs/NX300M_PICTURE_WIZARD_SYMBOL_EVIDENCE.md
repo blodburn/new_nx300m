@@ -1,5 +1,8 @@
 # NX300M capture ELF linkage and Picture Wizard evidence
 
+> **Firmware version correction (2026-10-31):** The private research file named `nx300m_mfw_1.1.bin` has an internal SLP header identifying the underlying Samsung firmware as **NX300M 1.15**. `MFW 1.1` denotes the modified firmware release, not Samsung-native firmware 1.1. This does not establish a match to target stock 1.14.
+
+
 ## Scope and provenance
 
 This is a **read-only** investigation of a partial set of previously extracted Samsung NX300/NX300M research libraries under `nx300m/analysis/capture_libs`. The provenance of these objects is the earlier NX300M MFW 1.1 research set. **They have NOT been proven byte-identical to the owner's installed NX300M firmware 1.14.** No proprietary ELF library, firmware, image, or byte dump is included in this public repository.
