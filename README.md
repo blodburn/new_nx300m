@@ -20,7 +20,7 @@ make test
 make bench
 ```
 
-`make test` compiles and executes 12 independent sanitizer-tested C suites, five JPEG SOF parser tests, five Y/C probe CLI tests, and six ARM ELF ABI audit tests. `make bench` exercises full-resolution **synthetic** images, which are not representative of camera hardware performance.
+`make test` compiles and executes 13 independent sanitizer-tested C suites, five JPEG SOF parser tests, five Y/C probe CLI tests, six ARM ELF ABI audit tests, and an EFL syntax-only check. `make bench` exercises full-resolution **synthetic** images, which are not representative of camera hardware performance.
 
 JPEG test encoder verification includes **odd 33×25 dimensions**, end-to-end decode of the 4:2:0 sample, independent SOF sampling readback, unchanged RAW bytes, original-preset bypass, EXIF APP1 byte-copy, and refusal to overwrite existing images. Both JPEG modes use row scratch, not a full RGB8 image buffer. For an offline 20 MP JPEG 4:2:0 benchmark, compile the host JPEG benchmark or run `.build/bench_jpeg 420` after `make bench`.
 
@@ -64,3 +64,11 @@ NX300M uses the Linux-based **Tizen Camera Platform** (DRIMeIV); userland ARM EL
 The new read-only offline tools are `research/nx300m_tizen_elf_audit.py` for checking ARM EABI5 and whether two versions' individual ELF libraries are byte-identical, and `scripts/nx300m_tizen_readonly_probe.sh` for reporting generic OS/library presence **only from an already authorized device shell**. Neither tool modifies firmware or provides a way to bypass camera access.
 
 Community NX300M modified firmware documents restoring `autoexec.sh` with **1.15** after update. Its safety or reversibility on a camera currently running **1.14** is not established. Do not flash or substitute ARM function offsets between firmware versions without verification.
+
+## Tizen Film Simulator — standalone rotary UI
+
+The new [Tizen EFL Film Simulator UI](docs/NX300M_TIZEN_FILM_MENU.md) provides a research-only right-side preset list and **rotate → preview → confirm/cancel** workflow across all 13 fixed looks. On-screen previous/next buttons and intensity controls are absent.
+
+The host-tested controller saves only after confirmation to an explicit caller-provided path; cancel and failed persistence retain the previously selected look. The GUI source is syntax-checked against a **host stub**, not a verified NX300M 1.14 ARM/EFL sysroot. Hardware dial event names, Picture Wizard integration, image-processing hooks and flash safety remain unverified.
+
+`make efl-check` performs host-only C syntax checking. `make tizen-efl` **refuses** to build without explicit compatible `TIZEN_CC`, `TIZEN_SYSROOT` and `TIZEN_PKG_CONFIG_LIBDIR`. No installable camera firmware or tested ARM executable is provided.
