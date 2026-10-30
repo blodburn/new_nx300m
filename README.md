@@ -20,7 +20,7 @@ make test
 make bench
 ```
 
-`make test` compiles and executes 13 independent sanitizer-tested C suites, five JPEG SOF parser tests, five Y/C probe CLI tests, six ARM ELF ABI audit tests, and an EFL syntax-only check. `make bench` exercises full-resolution **synthetic** images, which are not representative of camera hardware performance.
+`make test` compiles and executes 14 independent sanitizer-tested C suites, five JPEG SOF parser tests, five Y/C probe CLI tests, six ARM ELF ABI audit tests, and an EFL syntax-only check. `make bench` exercises full-resolution **synthetic** images, which are not representative of camera hardware performance.
 
 JPEG test encoder verification includes **odd 33×25 dimensions**, end-to-end decode of the 4:2:0 sample, independent SOF sampling readback, unchanged RAW bytes, original-preset bypass, EXIF APP1 byte-copy, and refusal to overwrite existing images. Both JPEG modes use row scratch, not a full RGB8 image buffer. For an offline 20 MP JPEG 4:2:0 benchmark, compile the host JPEG benchmark or run `.build/bench_jpeg 420` after `make bench`.
 
@@ -72,3 +72,9 @@ The new [Tizen EFL Film Simulator UI](docs/NX300M_TIZEN_FILM_MENU.md) provides a
 The host-tested controller saves only after confirmation to an explicit caller-provided path; cancel and failed persistence retain the previously selected look. The GUI source is syntax-checked against a **host stub**, not a verified NX300M 1.14 ARM/EFL sysroot. Hardware dial event names, Picture Wizard integration, image-processing hooks and flash safety remain unverified.
 
 `make efl-check` performs host-only C syntax checking. `make tizen-efl` **refuses** to build without explicit compatible `TIZEN_CC`, `TIZEN_SYSROOT` and `TIZEN_PKG_CONFIG_LIBDIR`. No installable camera firmware or tested ARM executable is provided.
+
+## Explicit physical-key evidence gate
+
+Input actions are **disabled by default**. An explicit four-key mapping is required for clockwise, counterclockwise, confirm and cancel; otherwise all unrecognized EFL key events are ignored. Desktop-only mapping requires the separate `NX_FILM_DEMO_KEYS=1` opt-in. The bounded `NX_FILM_LOG_KEYS=1` diagnostic prints at most 32 printable event keynames in an already-authorized EFL session. These are observations, not evidence of any installed NX300M 1.14 dial mapping. See [Film UI documentation](docs/NX300M_TIZEN_FILM_MENU.md).
+
+A guarded offline ARM cross-build script at `scripts/build_tizen_efl.sh` refuses to run without a verified original matching toolchain and sysroot; it also checks the emitted ELF class/machine/EABI before accepting any output. No device firmware is changed.

@@ -3,8 +3,9 @@
  *
  * NOT installed in Picture Wizard; no camera live-view/ISP/JPEG hook.
  * Physical NX300M dial event keynames have NOT been verified on firmware 1.14.
- * Only known GENERIC keynames are mapped: Left/Up, Right/Down,
- * Return/Enter to confirm, Escape/BackSpace to cancel.
+ * Default input mapping is DISABLED until four explicit names are provided.
+ * Desktop demo keys require opt-in NX_FILM_DEMO_KEYS=1.
+ * Optional bounded observed-key logging requires NX_FILM_LOG_KEYS=1.
  * NO prev/next on-screen buttons, no intensity slider, no camera patch.
  * This file requires the matching ARM/Tizen EFL sysroot to build for camera.
  */
@@ -14,10 +15,14 @@
 #include <string.h>
 #include "nx300m_tizen_film_controller.h"
 #include "nx300m_film_menu.h"
+#include "nx300m_tizen_keymap.h"
 
 typedef struct {
  Evas_Object *window,*root,*focus,*sidebar,*current,*neighbors,*status;
  nx_tizen_film_controller controller;
+ nx_tizen_keymap keymap;
+ unsigned observed_keynames;
+ int log_keynames;
  const char *settings_path;
 } film_ui;
 static film_ui ui;
@@ -50,42 +55,73 @@ static void redraw(const char *message){
  }
  elm_object_text_set(ui.sidebar,list);
  snprintf(text,sizeof(text),
-  "<align=center>ROTATE: PREVIEW  |  ENTER: APPLY  |  ESC: CANCEL<br/>"
+  "<align=center>ROTATE: PREVIEW  |  CONFIRM: APPLY  |  BACK: CANCEL<br/>"
   "%s</align>",
   v.dirty?"NOT SAVED":"CURRENT MODE");
  elm_object_text_set(ui.neighbors,text);
  elm_object_text_set(ui.status,message?message:
-   "OFFLINE TIZEN UI ONLY: NO CAMERA LIVEVIEW/ISP/JPEG CONNECTION");
+   (!ui.keymap.enabled?
+   "KEY INPUT DISABLED: SET ALL FOUR NX_FILM_KEY_* VARIABLES"
+   :"OFFLINE TIZEN UI ONLY: NO CAMERA LIVEVIEW/ISP/JPEG CONNECTION"));
+}
+static void setup_input_mapping(void){
+ memset(&ui.keymap,0,sizeof(ui.keymap));
+ ui.log_keynames=getenv("NX_FILM_LOG_KEYS")&&
+                  strcmp(getenv("NX_FILM_LOG_KEYS"),"1")==0;
+ const char *demo=getenv("NX_FILM_DEMO_KEYS");
+ if(demo&&strcmp(demo,"1")==0){
+  nx_tizen_keymap_demo(&ui.keymap);
+  fprintf(stderr,"NX300M: desktop-only demonstration key mapping enabled\n");
+  return;
+ }
+ const char *cw=getenv("NX_FILM_KEY_CW");
+ const char *ccw=getenv("NX_FILM_KEY_CCW");
+ const char *confirm=getenv("NX_FILM_KEY_CONFIRM");
+ const char *cancel=getenv("NX_FILM_KEY_CANCEL");
+ if(cw||ccw||confirm||cancel){
+  if(nx_tizen_keymap_set(&ui.keymap,cw,ccw,confirm,cancel)!=0)
+   fprintf(stderr,"NX300M: incomplete/ambiguous keymap rejected; keys disabled\n");
+ }
 }
 static void on_key_down(void *data,Evas *evas,Evas_Object *object,void *info){
  (void)data;(void)evas;(void)object;
  Evas_Event_Key_Down *ev=(Evas_Event_Key_Down *)info;
  if(!ev||!ev->keyname)return;
+ if(ui.log_keynames && ui.observed_keynames<NX_TIZEN_LOG_LIMIT &&
+    nx_tizen_keyname_observable(ev->keyname)){
+  /* Observes only a bounded EFL key token. No device IDs, passwords,
+   * camera storage, raw scancodes or Linux input device access. */
+  fprintf(stderr,"NX_FILM_EFL_KEYNAME=%s\n",ev->keyname);
+  ui.observed_keynames++;
+ }
  enum nx_tizen_film_event event;
- if(strcmp(ev->keyname,"Right")==0||strcmp(ev->keyname,"Down")==0){
+ switch(nx_tizen_keymap_lookup(&ui.keymap,ev->keyname)){
+ case NX_TIZEN_INPUT_CW:
   event=NX_TIZEN_FILM_ROTATE_CW;
- }else if(strcmp(ev->keyname,"Left")==0||strcmp(ev->keyname,"Up")==0){
+  break;
+ case NX_TIZEN_INPUT_CCW:
   event=NX_TIZEN_FILM_ROTATE_CCW;
- }else if(strcmp(ev->keyname,"Return")==0||
-          strcmp(ev->keyname,"KP_Enter")==0||
-          strcmp(ev->keyname,"space")==0){
+  break;
+ case NX_TIZEN_INPUT_CONFIRM:
   event=NX_TIZEN_FILM_CONFIRM;
- }else if(strcmp(ev->keyname,"Escape")==0||
-          strcmp(ev->keyname,"BackSpace")==0){
+  break;
+ case NX_TIZEN_INPUT_CANCEL:
   event=NX_TIZEN_FILM_CANCEL;
- }else{
+  break;
+ default:
   return; /* unknown camera key event is ignored, not guessed */
  }
+ /* A fresh rotation re-opens preview after a prior confirm/cancel; neither
+  * confirm nor cancel silently re-opens the menu or changes a saved mode. */
+ if(!ui.controller.open &&
+    (event==NX_TIZEN_FILM_ROTATE_CW||event==NX_TIZEN_FILM_ROTATE_CCW))
+  (void)nx_tizen_film_dispatch(&ui.controller,NX_TIZEN_FILM_OPEN);
  int result=nx_tizen_film_dispatch(&ui.controller,event);
  if(result==NX_TIZEN_FILM_SAVED)
   redraw("SAVED CONFIG ONLY: NATIVE JPEG ENGINE NOT CONNECTED");
  else if(result==NX_TIZEN_FILM_ERROR)
   redraw("NOT SAVED: CHECK EXPLICIT NX_FILM_CONFIG FILE PATH");
- else{
-  if(!ui.controller.open)
-   (void)nx_tizen_film_dispatch(&ui.controller,NX_TIZEN_FILM_OPEN);
-  redraw(NULL);
- }
+ else redraw(NULL);
 }
 static Evas_Object *make_label(Evas_Object *win,Evas_Object *parent){
  Evas_Object *obj=elm_label_add(win);
@@ -111,6 +147,7 @@ int main(int argc,char **argv){
  nx_tizen_film_controller_init(&ui.controller,saved.selected_id,
                                 ui.settings_path?persist:NULL,
                                 (void *)ui.settings_path);
+ setup_input_mapping();
  (void)nx_tizen_film_dispatch(&ui.controller,NX_TIZEN_FILM_OPEN);
  ui.window=elm_win_add(NULL,"NX300M Film Simulator",ELM_WIN_BASIC);
  if(!ui.window){elm_shutdown();return 2;}
