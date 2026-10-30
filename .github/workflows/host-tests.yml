@@ -7,5 +7,5 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Build and run 11 sanitizer regression suites
+      - name: Build and run 12 sanitizer regression suites plus Y/C probe CLI tests
         run: make test

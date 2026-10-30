@@ -20,7 +20,7 @@ make test
 make bench
 ```
 
-`make test` compiles and executes 11 independent sanitizer-tested C suites and one read-only JPEG SOF parser suite. `make bench` exercises full-resolution **synthetic** images, which are not representative of camera hardware performance.
+`make test` compiles and executes 12 independent sanitizer-tested C suites, five JPEG SOF parser tests, and five read-only Y/C probe CLI tests. `make bench` exercises full-resolution **synthetic** images, which are not representative of camera hardware performance.
 
 JPEG test encoder verification includes **odd 33×25 dimensions**, end-to-end decode of the 4:2:0 sample, independent SOF sampling readback, unchanged RAW bytes, original-preset bypass, EXIF APP1 byte-copy, and refusal to overwrite existing images. Both JPEG modes use row scratch, not a full RGB8 image buffer. For an offline 20 MP JPEG 4:2:0 benchmark, compile the host JPEG benchmark or run `.build/bench_jpeg 420` after `make bench`.
 
@@ -44,3 +44,15 @@ The public source tree intentionally excludes firmware images, extracted proprie
 ## License status
 
 This code is published for inspection. **No open-source license has been selected.** Public availability does not by itself grant permission to copy, modify or redistribute; a license can be chosen separately by the repository owner. Original brand names, proprietary firmware and vendor intellectual property remain their owners' property.
+
+## NX300M 1.14 integration gate and read-only Y/C probe
+
+See [native integration gates](docs/NX300M_114_INTEGRATION_GATES.md).
+
+Build with `make probe` to inspect *previously copied* same-stage Y/C and RGB888 data:
+
+```sh
+./.build/ycc420_probe WIDTH HEIGHT Y_STRIDE C_STRIDE RGB_STRIDE copied_y.bin copied_c.bin matching_rgb888.bin
+```
+
+The probe only compares two full-range BT.601 interleaved chroma hypotheses. It does not know the camera's original Y/C layout and will return `INCONCLUSIVE` if the evidence is inadequate. A normal JPEG or SRW does not provide the same-stage Y/C memory dump. No camera firmware is modified or executed.
