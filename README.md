@@ -32,6 +32,10 @@ An offline, read-only ELF metadata scan of a *partial research extraction* found
 
 `research/nx300m_capture_elf_surface_audit.py` scans only ELF dynamic metadata with `readelf` and `c++filt`. Seven fixture unit tests were added to `make test` (**15 C regression executables and 23 Python tests**); no proprietary ELF or firmware is distributed.
 
+## 1.14 Picture Wizard function-body comparison gate
+
+An unofficial [Samsung NX300M firmware archive](https://nxfiles.nx.tc/files/NX300M/Firmware/) lists `NX300M_FW_v1.14.zip`, but the current development environment **could not download it without network approval**. No authenticated 1.14 firmware image or extracted 1.14 ELF has been inspected. The older research ARM ELF yielded four Picture Wizard function body lengths (96, 172, 1036, 924 bytes) and independent cryptographic fingerprints. New `research/nx300m_picture_wizard_abi_gate.py` compares read-only ELF-mapped function bodies and refuses to infer compatibility solely from matching symbols. Seven synthetic fixture tests detect modified/missing functions. **Neither identical function bytes nor these historical offsets authorize firmware 1.14 patching.** See [1.14 ABI comparison evidence](docs/NX300M_PW_114_ABI_COMPARISON.md).
+
 ## Important limitations
 
 The source-backed analysis was performed using an NX300M **MFW 1.1 research firmware**; compatibility with an actual device running **firmware 1.14 is unverified**. There is no validated ARM firmware hook, no native camera SRAM/DMA adapter, no supported full-brick recovery, and no verified preservation of Samsung EXIF/MakerNotes on physical camera output. The Y/C byte layout, colorspace and stride need to be measured on an actual camera before any hardware bridge could be built.
