@@ -20,7 +20,7 @@ make test
 make bench
 ```
 
-`make test` compiles and executes 12 independent sanitizer-tested C suites, five JPEG SOF parser tests, and five read-only Y/C probe CLI tests. `make bench` exercises full-resolution **synthetic** images, which are not representative of camera hardware performance.
+`make test` compiles and executes 12 independent sanitizer-tested C suites, five JPEG SOF parser tests, five Y/C probe CLI tests, and six ARM ELF ABI audit tests. `make bench` exercises full-resolution **synthetic** images, which are not representative of camera hardware performance.
 
 JPEG test encoder verification includes **odd 33×25 dimensions**, end-to-end decode of the 4:2:0 sample, independent SOF sampling readback, unchanged RAW bytes, original-preset bypass, EXIF APP1 byte-copy, and refusal to overwrite existing images. Both JPEG modes use row scratch, not a full RGB8 image buffer. For an offline 20 MP JPEG 4:2:0 benchmark, compile the host JPEG benchmark or run `.build/bench_jpeg 420` after `make bench`.
 
@@ -56,3 +56,11 @@ Build with `make probe` to inspect *previously copied* same-stage Y/C and RGB888
 ```
 
 The probe only compares two full-range BT.601 interleaved chroma hypotheses. It does not know the camera's original Y/C layout and will return `INCONCLUSIVE` if the evidence is inadequate. A normal JPEG or SRW does not provide the same-stage Y/C memory dump. No camera firmware is modified or executed.
+
+## NX300M Tizen Camera Platform
+
+NX300M uses the Linux-based **Tizen Camera Platform** (DRIMeIV); userland ARM ELF software and Samsung's proprietary image-processing/ISP/JPEG pipeline are distinct. See [Tizen architecture and safe preflight](docs/NX300M_TIZEN_ARCHITECTURE.md).
+
+The new read-only offline tools are `research/nx300m_tizen_elf_audit.py` for checking ARM EABI5 and whether two versions' individual ELF libraries are byte-identical, and `scripts/nx300m_tizen_readonly_probe.sh` for reporting generic OS/library presence **only from an already authorized device shell**. Neither tool modifies firmware or provides a way to bypass camera access.
+
+Community NX300M modified firmware documents restoring `autoexec.sh` with **1.15** after update. Its safety or reversibility on a camera currently running **1.14** is not established. Do not flash or substitute ARM function offsets between firmware versions without verification.

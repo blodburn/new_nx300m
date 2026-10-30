@@ -15,6 +15,9 @@ test:
 	@python3 research/test_nx300m_jpeg_sof_probe.py
 	@$(MAKE) --no-print-directory probe
 	@python3 research/test_nx300m_host_ycc420_probe_cli.py
+	@python3 research/test_nx300m_tizen_elf_audit.py
+	@sh -n scripts/nx300m_tizen_readonly_probe.sh
+	@sh scripts/nx300m_tizen_readonly_probe.sh --help
 probe:
 	@mkdir -p .build
 	$(CC) -std=c11 -Wall -Wextra -Werror -Wpedantic -O2 -Iresearch research/nx300m_host_ycc420_probe_cli.c research/nx300m_host_ycc420_probe.c -o .build/ycc420_probe
