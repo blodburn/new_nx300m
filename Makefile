@@ -24,6 +24,7 @@ test:
 	@python3 research/test_nx300m_pw_setvalue_arg_audit.py
 	@python3 research/test_nx300m_pw_capture_branch_audit.py
 	@python3 research/test_nx300m_pw_capture_db_chain_audit.py
+	@python3 research/test_nx300m_capture_pref_jump_table_audit.py
 	@sh -n scripts/nx300m_tizen_readonly_probe.sh
 	@sh -n scripts/build_tizen_efl.sh
 	@sh scripts/nx300m_tizen_readonly_probe.sh --help

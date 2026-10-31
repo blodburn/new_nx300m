@@ -7,5 +7,5 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Test 17 C suites and 78 Python Capture DB graph, SLP and EFL cases
+      - name: Test 17 C suites and 86 Python Capture preference jump table, SLP and EFL cases
         run: make test

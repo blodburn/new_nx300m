@@ -37,7 +37,7 @@ Six explicitly named functions and six edge groups are checked. The words **DB s
 
 ## Important disassembly pitfall
 
-The large `UI_Set_DB_Value_Capture_Menu(eDB_SYSTEM_MENU,int)` routine contains repetitive embedded lookup/switch data. A blind four-byte linear scan identifies a large number of BL-like bit patterns there, predominantly lacking corresponding function symbols. These must **not** be represented as hundreds of genuine nested calls. The new analyzer deliberately excludes the DB setter's **body** from call scanning. Its **entry point as a direct call target** from a separate bounded function is valid static evidence, but its internal runtime paths are left unproven.
+**Correction (2026-10-31):** The initial graph excluded the DB setter body and therefore could not classify its internal call instructions. A subsequent audited scan proves `UI_Set_DB_Value_Capture_Menu(eDB_SYSTEM_MENU,int)` has a **205-entry absolute-address ARM jump table**. Its table words are data; its executable target blocks contain **193 direct ARM BL callsites to `pref_set_long`**, identified via `.rel.plt` symbols. Our earlier suggestion that the entire region contained only spurious BL-like lookup data was incomplete. See [verified preference jump table evidence](NX300M_CAPTURE_PREF_JUMPTABLE_PREFERENCE_API.md). Runtime persistence, specific Picture Wizard keys, native IPC, ISP changes and 1.14 compatibility remain unverified.
 
 ## Offline reproduction
 
