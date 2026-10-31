@@ -27,6 +27,7 @@ test:
 	@python3 research/test_nx300m_capture_pref_jump_table_audit.py
 	@python3 research/test_nx300m_capture_ui_db_id_audit.py
 	@python3 research/test_nx300m_ui39_pref_key_chain_audit.py
+	@python3 research/test_nx300m_pw_ui39_capture_route_audit.py
 	@sh -n scripts/nx300m_tizen_readonly_probe.sh
 	@sh -n scripts/build_tizen_efl.sh
 	@sh scripts/nx300m_tizen_readonly_probe.sh --help
