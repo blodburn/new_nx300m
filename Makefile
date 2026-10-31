@@ -19,6 +19,7 @@ test:
 	@python3 research/test_nx300m_capture_elf_surface_audit.py
 	@python3 research/test_nx300m_picture_wizard_abi_gate.py
 	@python3 research/test_nx300m_slp_firmware_integrity.py
+	@python3 research/test_nx300m_picture_wizard_setter_evidence.py
 	@sh -n scripts/nx300m_tizen_readonly_probe.sh
 	@sh -n scripts/build_tizen_efl.sh
 	@sh scripts/nx300m_tizen_readonly_probe.sh --help

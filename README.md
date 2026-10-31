@@ -50,6 +50,10 @@ The existing private reference is named `nx300m_mfw_1.1.bin`, but its **internal
 
 New read-only `research/nx300m_slp_firmware_integrity.py` reads an existing local BIN or ZIP (without extraction), rejects wrong camera models/versions and damaged/traversal archives, streams all six JAMCRC checks and SHA-256, and never modifies camera firmware. Nine synthetic tests verify corruption, bad metadata and ZIP handling; the full test suite has **17 C programs and 39 Python tests**. See [firmware SLP integrity evidence and version correction](docs/NX300M_SLP_PACKAGE_INTEGRITY.md). The original **1.14** binary remains unavailable for actual ABI comparison.
 
+## Picture Wizard setter assembly evidence: 13 local pointers are not 13 active styles
+
+Read-only analysis of the saved modified-firmware 1.15 reference `set_picture_wizard(int)` Ghidra evidence found **95 ARM instructions**, a clamp to 0..12, and **13 pointer entries initialized on the local stack**. The captured function has no visible direct call and no visible writes outside local stack. **This is not proof that the camera supports 13 native style choices or that this function actually applies Picture Wizard settings.** A separate older analysis described 12 native dispatch entries; the two counts refer to different evidence. None of it proves firmware 1.14 behavior. New `research/nx300m_picture_wizard_setter_evidence.py` and seven independent synthetic fixture tests check this narrow pattern without executing vendor code. See [Picture Wizard setter machine-code evidence](docs/NX300M_PW_SETTER_ASSEMBLY_EVIDENCE.md).
+
 ## Important limitations
 
 The source-backed analysis used **MFW 1.1 (a modified release based on embedded Samsung NX300M 1.15)**; compatibility with an actual device running **firmware 1.14 is unverified**. There is no validated ARM firmware hook, no native camera SRAM/DMA adapter, no supported full-brick recovery, and no verified preservation of Samsung EXIF/MakerNotes on physical camera output. The Y/C byte layout, colorspace and stride need to be measured on an actual camera before any hardware bridge could be built.
