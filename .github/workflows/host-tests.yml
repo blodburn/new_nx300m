@@ -7,5 +7,5 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Test 17 C suites, 46 Python cases, EFL/SLP and Picture Wizard setter evidence
+      - name: Test 17 C suites and 54 Python UI callgraph, SLP, EFL and ABI cases
         run: make test
