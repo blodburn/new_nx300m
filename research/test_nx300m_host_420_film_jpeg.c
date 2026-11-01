@@ -1,6 +1,8 @@
 #define _POSIX_C_SOURCE 200809L
 #include "nx300m_host_420_film_jpeg.h"
 #include "nx300m_host_native420_bridge.h"
+#include "nx300m_still_enhanced.h"
+#include "nx300m_host_jpeg_sink.h"
 #include <assert.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -13,6 +15,39 @@ static const uint8_t app1[]={
   'E','x','i','f',0,0,'I','I',42,0,8,0,0,0,0,0,0,0,0,0
 };
 static uint8_t reference[H][W*3u];
+static uint64_t read_jpeg(const char *path,size_t *size,int *has_exif);
+static uint8_t clamp8(int v){return (uint8_t)(v<0?0:v>255?255:v);}
+/* Independent legacy full-frame oracle for byte-exact streaming comparison.
+ * Both paths use the same synthetic Y/C and host JPEG writer, no camera DMA. */
+static uint64_t legacy_full_frame(const uint8_t *y,const uint8_t *c,
+                                  unsigned order,unsigned film_id,
+                                  const char *path){
+ uint8_t rgb[H][W*3u];
+ for(unsigned row=0;row<H;row++)for(unsigned x=0;x<W;x++){
+  const int yy=y[row*STRIDE+x];
+  const uint8_t *pair=c+(row/2u)*STRIDE+(x&~1u);
+  const int cb=(int)pair[order?1:0]-128,cr=(int)pair[order?0:1]-128;
+  uint8_t *p=rgb[row]+3u*x;
+  p[0]=clamp8(yy+((91881*cr+32768)>>16));
+  p[1]=clamp8(yy-((22554*cb+46802*cr+32768)>>16));
+  p[2]=clamp8(yy+((116130*cb+32768)>>16));
+ }
+ assert(nx_still_filter_enhanced_inplace(film_id,NX_STILL_SRGB_RGB888,
+               &rgb[0][0],W*3u,W,H)==NX_STILL_APPLIED);
+ nx_host_jpeg_writer *writer=nx_host_jpeg_writer_create_with_sampling(
+               path,app1,sizeof(app1),NX_HOST_JPEG_420);
+ assert(writer);
+ nx_bayer_rgb8_sink sink=nx_host_jpeg_writer_sink(writer);
+ assert(sink.begin(sink.user,W,H,film_id)==0);
+ for(unsigned row=0;row<H;row++)
+  assert(sink.write_row(sink.user,row,rgb[row],W*3u)==0);
+ assert(sink.commit(sink.user)==0);
+ nx_host_jpeg_writer_destroy(writer);
+ size_t bytes=0;int has_exif=0;
+ uint64_t hash=read_jpeg(path,&bytes,&has_exif);
+ assert(has_exif&&bytes>350&&unlink(path)==0);
+ return hash;
+}
 static uint64_t read_jpeg(const char *path,size_t *size,int *has_exif){
  FILE *f=fopen(path,"rb");
  assert(f);
@@ -83,6 +118,13 @@ int main(void){
    int present=0;
    hashes[order][i]=read_jpeg(paths[order][i],&sizes[order][i],&present);
    assert(present);
+   char expected_path[128];
+   assert(snprintf(expected_path,sizeof(expected_path),
+       "outputs/nx_host420_legacy_%ld_%u_%u.jpg",
+       (long)getpid(),order,film_id)>0);
+   assert(access(expected_path,F_OK)!=0);
+   assert(hashes[order][i]==legacy_full_frame(y,c,order,film_id,
+                                                expected_path));
    /* Host 420 -> film engine changes the RGB pixels BEFORE JPEG coding. */
    assert(sizes[order][i]>350);
    assert(memcmp(snapshot,frame,bytes)==0);
@@ -96,12 +138,12 @@ int main(void){
    assert(repeat==sizes[order][i]&&repeat_exif);
   }
   assert(hashes[order][0]!=hashes[order][1]);
-  const char *no_output="outputs/.nx_host420_original_must_not_exist.jpg";
+  const char *no_output="outputs/.nx300m_original_bypass_never_create_20261102.jpg";
   assert(access(no_output,F_OK)!=0);
   assert(nx_host420_film_to_jpeg(y,STRIDE*H,STRIDE,c,STRIDE*(H/2u),
       STRIDE,W,H,NX_HOST420_CBCR_EXPERIMENTAL,0,no_output,NULL,0)==1);
   assert(access(no_output,F_OK)!=0);
-  const char *bad="outputs/.nx_host420_invalid_must_not_exist.jpg";
+  const char *bad="outputs/.nx300m_invalid_input_never_create_20261102.jpg";
   assert(access(bad,F_OK)!=0);
   assert(nx_host420_film_to_jpeg(y,STRIDE*H,STRIDE,c,
      STRIDE*(H/2u),STRIDE,W,H,NX_HOST420_ORDER_UNSPECIFIED,
