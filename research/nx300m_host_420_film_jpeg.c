@@ -1,5 +1,7 @@
 #include "nx300m_host_420_film_jpeg.h"
-#include "nx300m_still_enhanced.h"
+#include "nx300m_image_enhance.h"
+#include "nx300m_camera_style_response.h"
+#include "nx300m_preview_rgb.h"
 #include "nx300m_host_jpeg_sink.h"
 #include "nx300m_film_menu.h"
 #include <stdint.h>
@@ -42,40 +44,72 @@ int nx_host420_film_to_jpeg(
  /* "Samsung Original" bypasses the independent image engine and does
   * not silently re-encode an Original image or create a second JPG. */
  if(film->id==0)return 1;
+ /* Host pixel pipeline uses only six RGB rows + three luma rows, not
+  * W*H*3 RGB frames. All neighborhood stages see their UNMODIFIED input
+  * neighbors before the next stage writes its output. */
  const size_t stride=(size_t)w*3u;
- const size_t bytes=stride*h;
- uint8_t *rgb=malloc(bytes);
- if(!rgb)return -1;
- for(unsigned row=0;row<h;row++){
-  const uint8_t *yy=y+(size_t)row*y_stride;
-  const uint8_t *cc=chroma+(size_t)(row/2u)*chroma_stride;
-  uint8_t *dest=rgb+(size_t)row*stride;
-  for(unsigned x=0;x<w;x++){
-   const unsigned pair=x&~1u;
-   const unsigned cb=cc[pair+(order==NX_HOST420_CRCB_EXPERIMENTAL?1u:0u)];
-   const unsigned cr=cc[pair+(order==NX_HOST420_CRCB_EXPERIMENTAL?0u:1u)];
-   decode_pixel(yy[x],cb,cr,dest+3u*x);
-  }
+ uint8_t *scratch=malloc((size_t)w*21u);
+ nx_rgb12 *lut=malloc(sizeof(nx_rgb12)*NX_LUT_COUNT);
+ nx_preview_processor *preview=malloc(sizeof(nx_preview_processor));
+ if(!scratch||!lut||!preview){
+  free(scratch);free(lut);free(preview);return -1;
  }
- const int result=nx_still_filter_enhanced_inplace(film->id,
-                       NX_STILL_SRGB_RGB888,rgb,stride,w,h);
- if(result!=NX_STILL_APPLIED){free(rgb);return -1;}
+ nx_film_menu selection;nx_film_menu_init(&selection);
+ selection.selected_id=film->id;
+ if(nx_film_lut_for_menu(&selection,lut)!=0||nx_preview_init(preview)!=0){
+  free(scratch);free(lut);free(preview);return -1;
+ }
+ uint8_t *filtered[3],*enhanced[3],*luma[3];
+ for(unsigned i=0;i<3;i++){
+  filtered[i]=scratch+(size_t)i*stride;
+  enhanced[i]=scratch+(size_t)(3u+i)*stride;
+  luma[i]=scratch+6u*stride+(size_t)i*w;
+ }
  /* Create-only writer atomically publishes a single completed JPEG.
   * The encoder receives HOST RGB, never Samsung native Y/C DMA. */
  nx_host_jpeg_writer *writer=nx_host_jpeg_writer_create_with_sampling(
       destination,original_exif,exif_size,NX_HOST_JPEG_420);
- if(!writer){free(rgb);return -1;}
+ if(!writer){free(scratch);free(lut);free(preview);return -1;}
  nx_bayer_rgb8_sink sink=nx_host_jpeg_writer_sink(writer);
- int status=0;
- if(sink.begin(sink.user,w,h,film->id)!=0)status=-1;
- if(!status)for(unsigned row=0;row<h;row++){
-  if(sink.write_row(sink.user,row,rgb+(size_t)row*stride,stride)!=0){
-   status=-1;break;
+ int status=sink.begin(sink.user,w,h,film->id)!=0?-1:0;
+ for(unsigned k=0;k<=h&&!status;k++){
+  if(k<h){
+   const uint8_t *yy=y+(size_t)k*y_stride;
+   const uint8_t *cc=chroma+(size_t)(k/2u)*chroma_stride;
+   uint8_t *dest=filtered[k%3u];
+   for(unsigned x=0;x<w;x++){
+    const unsigned pair=x&~1u;
+    const unsigned cb=cc[pair+(order==NX_HOST420_CRCB_EXPERIMENTAL?1u:0u)];
+    const unsigned cr=cc[pair+(order==NX_HOST420_CRCB_EXPERIMENTAL?0u:1u)];
+    decode_pixel(yy[x],cb,cr,dest+3u*x);
+   }
+   if(nx_preview_filter_rgb888(preview,lut,dest,stride,dest,stride,w,1)!=0)
+    status=-1;
+  }
+  if(!status&&k>=1u){
+   const unsigned center=k-1u;
+   const uint8_t *before=center?filtered[(center-1u)%3u]:NULL;
+   const uint8_t *after=center+1u<h?filtered[(center+1u)%3u]:NULL;
+   if(nx_image_enhance_rgb888_row(before,filtered[center%3u],after,
+       enhanced[center%3u],w,center,h)!=0||
+      nx_camera_style_luma_row(enhanced[center%3u],w,luma[center%3u])!=0)
+    status=-1;
+  }
+  if(!status&&k>=2u){
+   const unsigned row=k-2u;
+   if(nx_camera_style_apply_row(film->id,enhanced[row%3u],w,row,h,
+         row?luma[(row-1u)%3u]:NULL,luma[row%3u],luma[(row+1u)%3u])!=0||
+      sink.write_row(sink.user,row,enhanced[row%3u],stride)!=0)
+    status=-1;
   }
  }
+ if(!status&&
+    (nx_camera_style_apply_row(film->id,enhanced[(h-1u)%3u],w,h-1u,h,
+         luma[(h-2u)%3u],luma[(h-1u)%3u],NULL)!=0||
+     sink.write_row(sink.user,h-1u,enhanced[(h-1u)%3u],stride)!=0))status=-1;
  if(!status&&sink.commit(sink.user)!=0)status=-1;
  if(status)sink.abort(sink.user);
  nx_host_jpeg_writer_destroy(writer);
- free(rgb);
+ free(scratch);free(lut);free(preview);
  return status;
 }

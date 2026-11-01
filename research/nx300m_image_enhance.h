@@ -12,4 +12,12 @@
  */
 int nx_image_enhance_rgb888(uint8_t *pixels,size_t stride,
                            unsigned width,unsigned height);
+/* HOST-only streaming variant. Read three unmodified post-LUT RGB rows,
+ * write exactly one enhanced row. prev/next are NULL at image boundaries.
+ * This function never edits its inputs or accesses native camera memory. */
+int nx_image_enhance_rgb888_row(const uint8_t *prev,
+                               const uint8_t *cur,
+                               const uint8_t *next,
+                               uint8_t *out,unsigned width,
+                               unsigned y,unsigned height);
 #endif
