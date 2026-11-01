@@ -2,6 +2,10 @@
 
 Experimental image-processing source for investigating **Samsung NX300M** film-look processing. **This is not installable camera firmware** and must not be flashed onto a camera.
 
+## FW 1.14 copied image evidence preflight
+
+Host-only [Y/C420 + RGB manifest validation](docs/NX300M_CAPTURE_EVIDENCE_PREFLIGHT_20261102.md) checks three externally copied files, declared geometry, size and independent SHA-256 before experimental color-model analysis. It always refuses to certify same-stage camera provenance, NX300M native layout, ABI or firmware flash safety. Run `python3 research/test_nx300m_capture_manifest_gate.py` to reproduce 17 synthetic cases.
+
 ## Features
 
 - **13 fixed look selections:** Samsung Original passthrough, 7 experimental Fujifilm-style and 5 Leica-style looks. Brand names describe visual research targets; no manufacturer endorsement or affiliation.
