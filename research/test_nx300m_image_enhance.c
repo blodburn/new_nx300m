@@ -35,6 +35,18 @@ int main(void){
     make_image();
     int before=avg_noise(pixels,4,18);
     assert(nx_image_enhance_rgb888(pixels,STRIDE,W,H)==0);
+    /* Streaming row API must be bit-exact with the existing full-frame
+     * algorithm, including top/bottom border behavior and row padding. */
+    unsigned char row_output[W*3u];
+    for(unsigned y=0;y<H;y++){
+        const unsigned char *prev=y?backup+(size_t)(y-1)*STRIDE:NULL;
+        const unsigned char *cur=backup+(size_t)y*STRIDE;
+        const unsigned char *next=y+1<H?backup+(size_t)(y+1)*STRIDE:NULL;
+        assert(nx_image_enhance_rgb888_row(prev,cur,next,row_output,W,y,H)==0);
+        assert(memcmp(row_output,pixels+(size_t)y*STRIDE,W*3u)==0);
+    }
+    assert(nx_image_enhance_rgb888_row(NULL,NULL,NULL,row_output,W,0,H)==-1);
+    assert(nx_image_enhance_rgb888_row(NULL,backup,NULL,row_output,W,1,H)==-1);
     int after=avg_noise(pixels,4,18);
     assert(after<before);
     for(unsigned y=0;y<H;y++)

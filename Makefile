@@ -5,8 +5,8 @@ BASE = nx300m_host_capture_copy_adapter nx300m_picture_wizard_route_guard nx300m
 SOURCES = $(addprefix research/,$(addsuffix .c,$(BASE)))
 TESTS = linear_prejpeg bayer_prejpeg bayer_row_emit host_jpeg_sink host_native420_bridge host_420_film_jpeg host_ycc420_probe tizen_film_controller tizen_keymap picture_wizard_route_guard host_capture_copy_adapter shutter_jpeg_bridge camera_style_response film_menu image_enhance still_pipeline capture_bridge film_pixel_e2e
 BENCH_SOURCES = research/nx300m_host_native420_bridge.c research/nx300m_cycc_layout.c research/nx300m_host_jpeg_sink.c research/nx300m_bayer_prejpeg.c research/nx300m_camera_style_response.c research/nx300m_linear_prejpeg.c research/nx300m_film_menu.c research/nx300m_lut18.c research/nx300m_look_builder.c research/nx300m_preview_rgb.c
-.PHONY: test bench probe efl-check efl-runtime-test tizen-efl film-proof clean
-test:
+.PHONY: test bench probe multimodel-test multimodel-probe efl-check efl-runtime-test tizen-efl film-proof clean
+test: multimodel-test
 	@mkdir -p .build outputs
 	@set -e; for t in $(TESTS); do \
 	  $(CC) $(CFLAGS) -Iresearch research/test_nx300m_$$t.c $(SOURCES) $(LDLIBS) -o .build/test_nx300m_$$t; \
@@ -49,6 +49,13 @@ film-proof:
 	@mkdir -p .build outputs
 	$(CC) $(CFLAGS) -Iresearch research/test_nx300m_film_pixel_e2e.c $(SOURCES) $(LDLIBS) -o .build/test_nx300m_film_pixel_e2e
 	@ASAN_OPTIONS=detect_leaks=1 .build/test_nx300m_film_pixel_e2e --keep
+multimodel-test:
+	@mkdir -p .build
+	$(CC) $(CFLAGS) -Iresearch research/test_nx300m_ycc420_multimodel_probe.c research/nx300m_ycc420_multimodel_probe.c $(LDLIBS) -o .build/test_nx300m_ycc420_multimodel_probe
+	@ASAN_OPTIONS=detect_leaks=1 .build/test_nx300m_ycc420_multimodel_probe
+multimodel-probe:
+	@mkdir -p .build
+	$(CC) -std=c11 -Wall -Wextra -Werror -Wpedantic -O2 -Iresearch research/nx300m_ycc420_multimodel_probe_cli.c research/nx300m_ycc420_multimodel_probe.c $(LDLIBS) -o .build/nx300m_ycc420_multimodel_probe
 probe:
 	@mkdir -p .build
 	$(CC) -std=c11 -Wall -Wextra -Werror -Wpedantic -O2 -Iresearch research/nx300m_host_ycc420_probe_cli.c research/nx300m_host_ycc420_probe.c -o .build/ycc420_probe

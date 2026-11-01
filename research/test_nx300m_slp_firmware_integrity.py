@@ -2,13 +2,17 @@
 """Tests with synthetic firmware only. No proprietary firmware is distributed."""
 from __future__ import annotations
 import contextlib
+import hashlib
 import importlib.util
 import io
 import json
+import os
 from pathlib import Path
 import struct
+import stat
 import tempfile
 import unittest
+from unittest import mock
 import zipfile
 import zlib
 
@@ -146,6 +150,79 @@ class IntegrityTests(unittest.TestCase):
             self.assertIn("decoded_sha256",r)
             self.assertNotIn("firmware_raw_bytes",r)
             self.assertFalse(r["source_chain_of_custody_verified"])
+
+    def test_external_archive_and_decoded_bin_hashes_must_match(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            data = fixture()
+            p = Path(tmp) / "NX300M_FW_v1.14.zip"
+            with zipfile.ZipFile(p, "w") as archive:
+                archive.writestr("firmware/nx300m.bin", data)
+            archive_sha = hashlib.sha256(p.read_bytes()).hexdigest()
+            bin_sha = hashlib.sha256(data).hexdigest()
+            report = inspector.inspect(
+                p, expected_version="1.14",
+                expected_archive_sha256=archive_sha.upper(),
+                expected_bin_sha256=bin_sha)
+            self.assertEqual(report["archive_sha256"], archive_sha)
+            self.assertTrue(report["archive_fingerprint_matches_expected"])
+            self.assertTrue(report["bin_fingerprint_matches_expected"])
+            self.assertFalse(report["manufacturer_authenticity_proven"])
+            self.assertFalse(report["camera_flash_safe"])
+            with self.assertRaisesRegex(ValueError, "Archive SHA-256"):
+                inspector.inspect(p, expected_version="1.14",
+                                  expected_archive_sha256="0" * 64)
+            with self.assertRaisesRegex(ValueError, "Decoded BIN SHA-256"):
+                inspector.inspect(p, expected_version="1.14",
+                                  expected_bin_sha256="0" * 64)
+            with self.assertRaisesRegex(ValueError, "64 hex digits"):
+                inspector.inspect(p, expected_version="1.14",
+                                  expected_archive_sha256="abcd")
+
+    def test_zip_duplicate_normalized_paths_and_other_symlinks_refused(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            p = Path(tmp) / "bad.zip"
+            with zipfile.ZipFile(p, "w") as z:
+                z.writestr("NX300M.BIN", fixture())
+                z.writestr("nx300m.bin", fixture())
+            with self.assertRaisesRegex(ValueError, "duplicate normalized"):
+                inspector.inspect(p, expected_version="1.14")
+            link = zipfile.ZipInfo("link.txt")
+            link.create_system = 3
+            link.external_attr = (stat.S_IFLNK | 0o777) << 16
+            with zipfile.ZipFile(p, "w") as z:
+                z.writestr("NX300M.bin", fixture())
+                z.writestr(link, b"NX300M.bin")
+            with self.assertRaisesRegex(ValueError, "symlink"):
+                inspector.inspect(p, expected_version="1.14")
+
+    def test_zip_unsafe_windows_path_and_other_member_bomb_refused(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            p = Path(tmp) / "bad.zip"
+            with zipfile.ZipFile(p, "w") as z:
+                z.writestr("NX300M.bin", fixture())
+                z.writestr("C:/evil.txt", b"bad")
+            with self.assertRaisesRegex(ValueError, "unsafe path"):
+                inspector.inspect(p, expected_version="1.14")
+            with zipfile.ZipFile(p, "w", compression=zipfile.ZIP_DEFLATED) as z:
+                z.writestr("NX300M.bin", fixture())
+                z.writestr("other.dat", b"0" * (1 << 20))
+            with self.assertRaisesRegex(ValueError, "compression ratio"):
+                inspector.inspect(p, expected_version="1.14")
+
+    def test_file_change_during_scan_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            p = Path(tmp) / "image.bin"
+            p.write_bytes(fixture())
+            old_hash = inspector.sha256_reader
+            def change_mtime_after_hash(reader):
+                digest = old_hash(reader)
+                st = p.stat()
+                os.utime(p, ns=(st.st_atime_ns, st.st_mtime_ns + 1000000000))
+                return digest
+            with mock.patch.object(inspector, "sha256_reader",
+                                   side_effect=change_mtime_after_hash):
+                with self.assertRaisesRegex(ValueError, "changed during validation"):
+                    inspector.inspect(p, expected_version="1.14")
 
 if __name__=="__main__":
     unittest.main(verbosity=2)
