@@ -19,6 +19,7 @@ test: multimodel-test
 	@python3 research/test_nx300m_capture_elf_surface_audit.py
 	@python3 research/test_nx300m_picture_wizard_abi_gate.py
 	@python3 research/test_nx300m_slp_firmware_integrity.py
+	@python3 research/test_nx300m_capture_manifest_gate.py
 	@python3 research/test_nx300m_picture_wizard_setter_evidence.py
 	@python3 research/test_nx300m_pw_ui_bl_call_audit.py
 	@python3 research/test_nx300m_pw_setvalue_arg_audit.py

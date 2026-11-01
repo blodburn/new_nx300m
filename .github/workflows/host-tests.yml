@@ -7,5 +7,5 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Test 19 C suites and 138 Python film pixel/firmware/native ABI cases
+      - name: Test 19 C suites and 155 Python film/firmware/capture evidence cases
         run: make test
