@@ -3,6 +3,7 @@
 #include <stddef.h>
 #include <stdint.h>
 #include "nx300m_host_native420_bridge.h"
+#include "nx300m_ycc420_multimodel_probe.h"
 
 /* HOST-ONLY explicit 4:2:0 -> RGB -> independent film look -> JPEG.
  * Never access a camera/DMA pointer or edit the input Y/C/RAW planes.
@@ -19,4 +20,17 @@ int nx_host420_film_to_jpeg(
     unsigned width, unsigned height, enum nx_host420_order byte_order,
     unsigned film_id, const char *new_jpeg_path,
     const uint8_t *original_exif_app1, size_t exif_bytes);
+/* HOST-ONLY color-model-gated path. Requires independently copied
+ * SAME-STAGE RGB888 reference to score all 8 hypotheses in this call.
+ * Model is used only if the probe returns DISTINCT; otherwise refuse.
+ * Does not certify camera ABI, DMA ownership or firmware compatibility.
+ * report is REQUIRED and populated even for inconclusive evidence.
+ */
+int nx_host420_film_to_jpeg_from_reference(
+    const uint8_t *y,size_t y_bytes,size_t y_stride,
+    const uint8_t *chroma,size_t chroma_bytes,size_t chroma_stride,
+    const uint8_t *reference_rgb,size_t ref_bytes,size_t ref_stride,
+    unsigned width,unsigned height,unsigned film_id,
+    const char *new_jpeg_path,const uint8_t *original_exif_app1,
+    size_t exif_bytes,nx_420_model_report *report);
 #endif

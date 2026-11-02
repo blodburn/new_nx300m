@@ -7,6 +7,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <limits.h>
+#include <math.h>
 
 enum { MAX_DIMENSION=8192, MAX_STRIDE=65536 };
 #define MAX_HOST_FRAME_BYTES ((size_t)64u*1024u*1024u)
@@ -15,7 +16,24 @@ static uint8_t byte8(int x){
  return (uint8_t)(x<0?0:x>255?255:x);
 }
 static void decode_pixel(unsigned yy,unsigned cbb,unsigned crr,
-                         uint8_t *out){
+                         enum nx_420_model model,uint8_t *out){
+ if(model!=NX_420_BT601_FULL){
+  const int limited=(model==NX_420_BT601_LIMITED||
+                     model==NX_420_BT709_LIMITED);
+  const int bt709=(model==NX_420_BT709_FULL||
+                   model==NX_420_BT709_LIMITED);
+  const double yv=limited?((double)yy-16.)*255./219.:(double)yy;
+  const double cv=limited?255./224.:1.;
+  const double cb=((int)cbb-128)*cv,cr=((int)crr-128)*cv;
+  const double rv=yv+(bt709?1.5748:1.402)*cr;
+  const double gv=yv-(bt709?0.187324:0.344136)*cb-
+                    (bt709?0.468124:0.714136)*cr;
+  const double bv=yv+(bt709?1.8556:1.772)*cb;
+  out[0]=byte8((int)lround(rv));
+  out[1]=byte8((int)lround(gv));
+  out[2]=byte8((int)lround(bv));
+  return;
+ }
  int cb=(int)cbb-128,cr=(int)crr-128,y=(int)yy;
  /* HOST BT.601 full-range conversion only; native Samsung ISP matrix,
   * chroma siting, luma range and layout remain unverified. */
@@ -23,11 +41,11 @@ static void decode_pixel(unsigned yy,unsigned cbb,unsigned crr,
  out[1]=byte8(y-((22554*cb+46802*cr+32768)>>16));
  out[2]=byte8(y+((116130*cb+32768)>>16));
 }
-int nx_host420_film_to_jpeg(
+static int nx_host420_film_to_jpeg_model(
     const uint8_t *y,size_t y_bytes,size_t y_stride,
     const uint8_t *chroma,size_t chroma_bytes,size_t chroma_stride,
     unsigned w,unsigned h,enum nx_host420_order order,
-    unsigned film_id,const char *destination,
+    enum nx_420_model model,unsigned film_id,const char *destination,
     const uint8_t *original_exif,size_t exif_size){
  const nx_film_preset *film=nx_film_by_id(film_id);
  if(!film||!y||!chroma||!destination||!destination[0]||
@@ -35,7 +53,8 @@ int nx_host420_film_to_jpeg(
     (w&1u)||(h&1u)||y_stride<w||chroma_stride<w||
     y_stride>MAX_STRIDE||chroma_stride>MAX_STRIDE||
     (order!=NX_HOST420_CBCR_EXPERIMENTAL&&
-     order!=NX_HOST420_CRCB_EXPERIMENTAL))return -1;
+     order!=NX_HOST420_CRCB_EXPERIMENTAL)||
+    model<0||model>=NX_420_MODEL_COUNT)return -1;
  const uint64_t last_y=(uint64_t)(h-1u)*y_stride+w;
  const uint64_t last_c=(uint64_t)(h/2u-1u)*chroma_stride+w;
  const uint64_t pixels=(uint64_t)w*h*3u;
@@ -81,7 +100,7 @@ int nx_host420_film_to_jpeg(
     const unsigned pair=x&~1u;
     const unsigned cb=cc[pair+(order==NX_HOST420_CRCB_EXPERIMENTAL?1u:0u)];
     const unsigned cr=cc[pair+(order==NX_HOST420_CRCB_EXPERIMENTAL?0u:1u)];
-    decode_pixel(yy[x],cb,cr,dest+3u*x);
+    decode_pixel(yy[x],cb,cr,model,dest+3u*x);
    }
    if(nx_preview_filter_rgb888(preview,lut,dest,stride,dest,stride,w,1)!=0)
     status=-1;
@@ -112,4 +131,40 @@ int nx_host420_film_to_jpeg(
  nx_host_jpeg_writer_destroy(writer);
  free(scratch);free(lut);free(preview);
  return status;
+}
+
+/* Retain the previous explicit BT.601/full experimental host API for
+ * byte-exact regression compatibility. It is NOT native camera format. */
+int nx_host420_film_to_jpeg(
+    const uint8_t *y,size_t y_bytes,size_t y_stride,
+    const uint8_t *chroma,size_t chroma_bytes,size_t chroma_stride,
+    unsigned w,unsigned h,enum nx_host420_order order,
+    unsigned film_id,const char *destination,
+    const uint8_t *original_exif,size_t exif_size){
+ return nx_host420_film_to_jpeg_model(y,y_bytes,y_stride,chroma,
+   chroma_bytes,chroma_stride,w,h,order,NX_420_BT601_FULL,film_id,
+   destination,original_exif,exif_size);
+}
+/* Never trust an externally supplied winning model without re-scoring the
+ * actual copied three-plane buffers in this SAME call. No camera access. */
+int nx_host420_film_to_jpeg_from_reference(
+    const uint8_t *y,size_t y_bytes,size_t y_stride,
+    const uint8_t *chroma,size_t chroma_bytes,size_t chroma_stride,
+    const uint8_t *reference_rgb,size_t ref_bytes,size_t ref_stride,
+    unsigned w,unsigned h,unsigned film_id,
+    const char *destination,const uint8_t *original_exif,size_t exif_size,
+    nx_420_model_report *report){
+ if(!report)return -1;
+ const enum nx_420_model_verdict verdict=nx_420_multimodel_probe(
+   y,y_bytes,y_stride,chroma,chroma_bytes,chroma_stride,
+   reference_rgb,ref_bytes,ref_stride,w,h,report);
+ if(verdict!=NX_420_MODEL_DISTINCT||
+    report->best_model<0||report->best_model>=NX_420_MODEL_COUNT||
+    (report->best_order!=NX_420_ORDER_CBCR&&
+     report->best_order!=NX_420_ORDER_CRCB))return -1;
+ const enum nx_host420_order order=report->best_order==NX_420_ORDER_CBCR?
+   NX_HOST420_CBCR_EXPERIMENTAL:NX_HOST420_CRCB_EXPERIMENTAL;
+ return nx_host420_film_to_jpeg_model(y,y_bytes,y_stride,chroma,
+   chroma_bytes,chroma_stride,w,h,order,report->best_model,
+   film_id,destination,original_exif,exif_size);
 }
