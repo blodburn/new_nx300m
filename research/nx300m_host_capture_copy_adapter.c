@@ -1,6 +1,6 @@
 #include "nx300m_host_capture_copy_adapter.h"
 #include "nx300m_film_menu.h"
-#include "nx300m_still_pipeline.h"
+#include "nx300m_still_enhanced.h"
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -47,7 +47,9 @@ int nx_host_capture_apply_copy(const nx_host_copy_job *job){
  uint8_t *stage=malloc(span);
  if(!stage) return NX_HOST_COPY_INVALID;
  memcpy(stage,job->src,span);
- int status=nx_still_filter_inplace(plan.validated_film_id,
+ /* Apply all three film stages to the private buffer. No redundant
+  * full-frame copy; destination remains untouched until success. */
+ int status=nx_still_filter_enhanced_private_copy(plan.validated_film_id,
      NX_STILL_SRGB_RGB888,stage,job->stride,job->width,job->height);
  if(status!=NX_STILL_APPLIED){
   free(stage);

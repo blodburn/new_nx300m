@@ -102,7 +102,13 @@ int main(void){
  assert(m.raw_calls==1&&m.jpeg_calls==0);
  assert(out.raw_saved==0&&out.jpeg_saved==0);
  untouched();
- memset(&m,0,sizeof(m));m.fail_jpeg=1;
+ memset(&m,0,sizeof(m));memset(&out,0,sizeof(out));m.fail_jpeg=1;
+ q=req(&m,NX_SAVE_RAW_AND_JPEG,"outputs/test_selected_for_shutter.cfg");
+ assert(nx_shutter_save_selected(&q,&out)==-1);
+ assert(m.raw_calls==1&&m.jpeg_calls==1);
+ assert(out.raw_saved==1&&out.jpeg_saved==0);
+ assert(!memcmp(m.saved_raw,raw,sizeof(raw)));untouched();
+ memset(&m,0,sizeof(m));memset(&out,0,sizeof(out));m.fail_jpeg=1;
  q=req(&m,NX_SAVE_JPEG_ONLY,"outputs/test_selected_for_shutter.cfg");
  assert(nx_shutter_save_selected(&q,&out)==-1);
  assert(m.jpeg_calls==1&&m.raw_calls==0&&out.jpeg_saved==0);untouched();
