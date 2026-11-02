@@ -136,3 +136,19 @@ RGB8 errors and number of samples with a channel error >12. All LUT
 nodes stay in runner RAM, and no derivative files are published.
 This diagnostic does not change the fixed 18^3 NX300M host API or claim
 that either larger table is safe on an actual camera.
+
+## High-fidelity host 65³ option
+
+The independent scripts/nx300m_cube_to_lut65.py converts a legally
+supplied sRGB 3D .cube to NX_LUT_RGB12_GRID_V1, grid=65 with exactly
+274,625 RGB12 nodes (2,197,000 bytes of C table memory). It REJECTS
+numerical results above peak RGB8 12 or mean RGB8 2 by default, and
+never overwrites existing files. The host-only C reader and fixed-point
+interpolator in research/nx300m_lut_grid_host.c support grids 2..65,
+with strict source-file validation, staging and zero partial publication.
+The real pinned SpektraFilm CI writes a private 65³ LUT, validates its
+strict numerical QA and loads/applies it using ASAN/UBSAN C host tests.
+No derivative is checked into Git or uploaded as a workflow artifact.
+This does NOT change 18³ camera research UI or approve installation: 65³
+needs about 47.1x as much table memory as 18³, with physical memory, ISP,
+JPEG ABI, live view and recovery all unverified.
