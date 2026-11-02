@@ -6,12 +6,18 @@ on:
       - 'research/nx300m_spektrafilm_real_profile_qa.py'
       - 'research/test_nx300m_spektrafilm_real_profile_qa.py'
       - 'scripts/nx300m_cube_to_lut18.py'
+      - 'scripts/nx300m_cube_to_lut65.py'
+      - 'research/nx300m_lut_grid_host.c'
+      - 'research/test_nx300m_lut_grid_host.c'
   pull_request:
     paths:
       - '.github/workflows/spektrafilm-profile-check.yml'
       - 'research/nx300m_spektrafilm_real_profile_qa.py'
       - 'research/test_nx300m_spektrafilm_real_profile_qa.py'
       - 'scripts/nx300m_cube_to_lut18.py'
+      - 'scripts/nx300m_cube_to_lut65.py'
+      - 'research/nx300m_lut_grid_host.c'
+      - 'research/test_nx300m_lut_grid_host.c'
   workflow_dispatch:
 
 permissions:
@@ -19,7 +25,7 @@ permissions:
 
 jobs:
   spektrafilm-actual-profile-host-only:
-    name: PROVIA 100F / Crystal Archive -> NX18 (ephemeral)
+    name: PROVIA 100F / Crystal Archive -> NX18 + NX65 (ephemeral)
     runs-on: ubuntu-latest
     timeout-minutes: 28
     env:
@@ -100,6 +106,40 @@ jobs:
                     f"p99 RGB8={s['p99_8bit']} "
                     f"over12={s['above_12']} "
                     f"host-table-bytes={s['rgb12_table_bytes']}")
+          PY
+
+      - name: Build high-fidelity 65^3 RGB12 file and verify host C reader
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/nx300m_cube_to_lut65.py \
+            --input "$ACTUAL_CUBE" \
+            --output "$RUNNER_TEMP/nx18-test/provia100f.nx65.txt" \
+            --qa "$RUNNER_TEMP/nx18-test/nx65.qa.json" \
+            --grid 65 --samples 2048 \
+            --max-error-8bit 12 --mean-error-8bit 2 \
+            --source-name "SpektraFilm PROVIA100F/Crystal Archive from pinned SHA" \
+            --license-id "CC-BY-SA-4.0" \
+            > "$RUNNER_TEMP/nx18-test/nx65.report.json"
+          gcc -std=c11 -O1 -Wall -Wextra -Werror -fsanitize=address,undefined \
+            -fno-omit-frame-pointer -Iresearch \
+            research/test_nx300m_lut_grid_host.c \
+            research/nx300m_lut_grid_host.c research/nx300m_lut18.c \
+            -o "$RUNNER_TEMP/test_host_nx65_lut"
+          ASAN_OPTIONS=detect_leaks=1 "$RUNNER_TEMP/test_host_nx65_lut" \
+            65 "$RUNNER_TEMP/nx18-test/provia100f.nx65.txt"
+          python3 - <<'PY'
+          import os,json
+          from pathlib import Path
+          root=Path(os.environ["RUNNER_TEMP"])/"nx18-test"
+          r=json.loads((root/"nx65.qa.json").read_text())
+          print("REAL NX65 STRICT RESCALING:",r["status"],
+                "grid",r["nx_grid"],
+                "peak",r["metrics"]["peak_8bit"],
+                "mean",r["metrics"]["mean_8bit"],
+                "bytes",r["table_bytes"],
+                "camera_installable",r["camera_installable"])
+          assert r["status"]=="PASS_NUMERICAL_ONLY" and not r["camera_installable"]
           PY
 
       - name: Camera firmware safety statement
