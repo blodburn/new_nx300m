@@ -5,7 +5,7 @@ BASE = nx300m_host_capture_copy_adapter nx300m_picture_wizard_route_guard nx300m
 SOURCES = $(addprefix research/,$(addsuffix .c,$(BASE)))
 TESTS = linear_prejpeg bayer_prejpeg bayer_row_emit host_jpeg_sink host_native420_bridge host_420_film_jpeg host420_ref_gate host_ycc420_probe tizen_film_controller tizen_keymap picture_wizard_route_guard host_capture_copy_adapter shutter_jpeg_bridge camera_style_response film_menu lut18_text_io lut_grid_host host_lutgrid_jpeg image_enhance still_pipeline capture_bridge film_pixel_e2e
 BENCH_SOURCES = research/nx300m_host_native420_bridge.c research/nx300m_cycc_layout.c research/nx300m_host_jpeg_sink.c research/nx300m_bayer_prejpeg.c research/nx300m_camera_style_response.c research/nx300m_linear_prejpeg.c research/nx300m_film_menu.c research/nx300m_lut18.c research/nx300m_look_builder.c research/nx300m_preview_rgb.c
-.PHONY: test bench probe multimodel-test multimodel-probe efl-check efl-runtime-test tizen-efl film-proof clean
+.PHONY: test bench bench-lut65 probe multimodel-test multimodel-probe efl-check efl-runtime-test tizen-efl film-proof clean
 test: multimodel-test
 	@mkdir -p .build outputs
 	@set -e; for t in $(TESTS); do \
@@ -72,5 +72,14 @@ bench:
 	.build/bench_jpeg
 	$(CC) -std=c11 -Wall -Wextra -Werror -O3 -Iresearch research/bench_nx300m_host_native420.c $(BENCH_SOURCES) -lm -o .build/bench_ycc
 	.build/bench_ycc
+bench-lut65:
+	@mkdir -p .build outputs
+	@test -n "$(LUT65_PATH)" || (echo "Provide LUT65_PATH=<authorized private file>" >&2; exit 2)
+	$(CC) -std=c11 -O3 -Wall -Wextra -Werror -Iresearch \
+	  research/bench_nx300m_lut65_jpeg.c research/nx300m_host_lutgrid_jpeg.c \
+	  research/nx300m_lut_grid_host.c research/nx300m_preview_rgb.c \
+	  research/nx300m_host_jpeg_sink.c research/nx300m_lut18.c -lm -o .build/bench_nx65_jpeg
+	.build/bench_nx65_jpeg small "$(LUT65_PATH)" outputs
+	.build/bench_nx65_jpeg full "$(LUT65_PATH)" outputs
 clean:
 	rm -rf .build

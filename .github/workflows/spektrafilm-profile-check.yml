@@ -11,6 +11,7 @@ on:
       - 'research/test_nx300m_lut_grid_host.c'
       - 'research/nx300m_host_lutgrid_jpeg.c'
       - 'research/test_nx300m_host_lutgrid_jpeg.c'
+      - 'research/bench_nx300m_lut65_jpeg.c'
   pull_request:
     paths:
       - '.github/workflows/spektrafilm-profile-check.yml'
@@ -22,6 +23,7 @@ on:
       - 'research/test_nx300m_lut_grid_host.c'
       - 'research/nx300m_host_lutgrid_jpeg.c'
       - 'research/test_nx300m_host_lutgrid_jpeg.c'
+      - 'research/bench_nx300m_lut65_jpeg.c'
   workflow_dispatch:
 
 permissions:
@@ -163,6 +165,60 @@ jobs:
           ASAN_OPTIONS=detect_leaks=1 "$RUNNER_TEMP/test_spektrafilm_lut65_jpeg" \
             65 "$RUNNER_TEMP/nx18-test/provia100f.nx65.txt"
           echo "PASS: actual upstream PROVIA 100F spectral LUT applied to copied RGB888, encoded as new host JPEG, and output deleted."
+
+      - name: Full-resolution host performance and memory benchmark (20.6MP)
+        shell: bash
+        timeout-minutes: 13
+        run: |
+          set -euo pipefail
+          gcc -std=c11 -O3 -Wall -Wextra -Werror -Iresearch \
+            research/bench_nx300m_lut65_jpeg.c \
+            research/nx300m_host_lutgrid_jpeg.c \
+            research/nx300m_lut_grid_host.c \
+            research/nx300m_preview_rgb.c \
+            research/nx300m_host_jpeg_sink.c \
+            research/nx300m_lut18.c \
+            -lm -o "$RUNNER_TEMP/bench_nx65_jpeg"
+          "$RUNNER_TEMP/bench_nx65_jpeg" small \
+            "$RUNNER_TEMP/nx18-test/provia100f.nx65.txt" outputs \
+            | tee "$RUNNER_TEMP/nx18-test/bench_small.txt"
+          "$RUNNER_TEMP/bench_nx65_jpeg" full \
+            "$RUNNER_TEMP/nx18-test/provia100f.nx65.txt" outputs \
+            | tee "$RUNNER_TEMP/nx18-test/bench_full.txt"
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          root=Path(os.environ["RUNNER_TEMP"])/"nx18-test"
+          entries=[]
+          for name in ("bench_small.txt","bench_full.txt"):
+              lines=(root/name).read_text().strip().splitlines()
+              rows=[json.loads(line.removeprefix("NX65_HOST_BENCH_JSON "))
+                    for line in lines if line.startswith("NX65_HOST_BENCH_JSON ")]
+              if len(rows)!=1:raise SystemExit("REJECT missing benchmark data: "+name)
+              v=rows[0]
+              if not all(v[k] is True for k in
+                 ("host_only","source_immutable","LUT_immutable",
+                  "exif_app1_preserved","create_only","destination_removed")):
+                  raise SystemExit("REJECT benchmark invariant failure: "+name)
+              if v["camera_fw114_verified"] is not False:
+                  raise SystemExit("REJECT false camera evidence")
+              if v["peak_process_rss_kib"]>256*1024:
+                  raise SystemExit("REJECT host RSS above 256MiB engineering guard")
+              entries.append(v)
+          if entries[1]["width"]*entries[1]["height"]!=5546*3714:
+              raise SystemExit("REJECT wrong full-resolution workload")
+          with open(os.environ["GITHUB_STEP_SUMMARY"],"a",encoding="utf-8") as s:
+              s.write("\n### 65³ real profile host 20.6MP JPEG benchmark (not camera)\n")
+              s.write("| Mode | Pixels | Repeats | Median s | P95 s | Peak process RSS MiB | JPEG bytes |\n")
+              s.write("|---|---:|---:|---:|---:|---:|---:|\n")
+              for v in entries:
+                  s.write(f'| {v["width"]}×{v["height"]} | {v["width"]*v["height"]:,}'
+                          f' | {v["repeat_count"]} | {v["seconds_median"]:.3f}'
+                          f' | {v["seconds_p95"]:.3f} | {v["peak_process_rss_kib"]/1024:.2f}'
+                          f' | {v["jpeg_size_bytes"]:,} |\n')
+          print("PASS host memory/performance metrics captured: no camera claims")
+          PY
 
       - name: Camera firmware safety statement
         shell: bash
