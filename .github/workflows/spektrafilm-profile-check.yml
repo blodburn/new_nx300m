@@ -9,6 +9,8 @@ on:
       - 'scripts/nx300m_cube_to_lut65.py'
       - 'research/nx300m_lut_grid_host.c'
       - 'research/test_nx300m_lut_grid_host.c'
+      - 'research/nx300m_host_lutgrid_jpeg.c'
+      - 'research/test_nx300m_host_lutgrid_jpeg.c'
   pull_request:
     paths:
       - '.github/workflows/spektrafilm-profile-check.yml'
@@ -18,6 +20,8 @@ on:
       - 'scripts/nx300m_cube_to_lut65.py'
       - 'research/nx300m_lut_grid_host.c'
       - 'research/test_nx300m_lut_grid_host.c'
+      - 'research/nx300m_host_lutgrid_jpeg.c'
+      - 'research/test_nx300m_host_lutgrid_jpeg.c'
   workflow_dispatch:
 
 permissions:
@@ -141,6 +145,24 @@ jobs:
                 "camera_installable",r["camera_installable"])
           assert r["status"]=="PASS_NUMERICAL_ONLY" and not r["camera_installable"]
           PY
+
+      - name: Real SpektraFilm 65^3 LUT -> host JPEG with EXIF
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p outputs
+          gcc -std=c11 -O1 -Wall -Wextra -Werror -fsanitize=address,undefined \
+            -fno-omit-frame-pointer -Iresearch \
+            research/test_nx300m_host_lutgrid_jpeg.c \
+            research/nx300m_host_lutgrid_jpeg.c \
+            research/nx300m_lut_grid_host.c \
+            research/nx300m_lut18.c \
+            research/nx300m_preview_rgb.c \
+            research/nx300m_host_jpeg_sink.c \
+            -lm -o "$RUNNER_TEMP/test_spektrafilm_lut65_jpeg"
+          ASAN_OPTIONS=detect_leaks=1 "$RUNNER_TEMP/test_spektrafilm_lut65_jpeg" \
+            65 "$RUNNER_TEMP/nx18-test/provia100f.nx65.txt"
+          echo "PASS: actual upstream PROVIA 100F spectral LUT applied to copied RGB888, encoded as new host JPEG, and output deleted."
 
       - name: Camera firmware safety statement
         shell: bash
