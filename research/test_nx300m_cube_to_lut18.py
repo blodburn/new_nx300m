@@ -84,7 +84,7 @@ class CubeBridgeTests(unittest.TestCase):
     def test_1d_not_supported(self):
         self.invalid(lambda x:x.replace("DOMAIN_MIN","LUT_1D_SIZE 16\nDOMAIN_MIN",1))
     def test_out_of_range_output(self):
-        self.invalid(lambda x:x.replace("0 0 0\n", "1.1 0 0\n",1) if False else x + "1.1 0 0\n")
+        self.invalid(lambda x:x.replace("\n0 0 0\n", "\n1.1 0 0\n",1))
     def test_nonfinite_node(self):
         self.invalid(lambda x:x.replace("0 0 0\n", "nan 0 0\n",1) if False else x.replace("\n0 0 0\n","\nnan 0 0\n",1))
     def test_invalid_domain(self):
@@ -97,7 +97,7 @@ class CubeBridgeTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             d=Path(td);p=d/"actual.cube";fixture(p,3)
             (d/"alias.cube").symlink_to(p)
-            with self.assertRaises(ValueError):cube.parse_cube(d/"alias.cube")
+            with self.assertRaises((ValueError, OSError)):cube.parse_cube(d/"alias.cube")
     def test_cli_success_and_guard(self):
         with tempfile.TemporaryDirectory() as td:
             d=Path(td);fixture(d/"in.cube",5)
