@@ -78,7 +78,7 @@ bench-lut65:
 	$(CC) -std=c11 -O3 -Wall -Wextra -Werror -Iresearch \
 	  research/bench_nx300m_lut65_jpeg.c research/nx300m_host_lutgrid_jpeg.c \
 	  research/nx300m_lut_grid_host.c research/nx300m_preview_rgb.c \
-	  research/nx300m_host_jpeg_sink.c -lm -o .build/bench_nx65_jpeg
+	  research/nx300m_host_jpeg_sink.c research/nx300m_lut18.c -lm -o .build/bench_nx65_jpeg
 	.build/bench_nx65_jpeg small "$(LUT65_PATH)" outputs
 	.build/bench_nx65_jpeg full "$(LUT65_PATH)" outputs
 clean:

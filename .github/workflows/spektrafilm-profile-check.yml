@@ -177,6 +177,7 @@ jobs:
             research/nx300m_lut_grid_host.c \
             research/nx300m_preview_rgb.c \
             research/nx300m_host_jpeg_sink.c \
+            research/nx300m_lut18.c \
             -lm -o "$RUNNER_TEMP/bench_nx65_jpeg"
           "$RUNNER_TEMP/bench_nx65_jpeg" small \
             "$RUNNER_TEMP/nx18-test/provia100f.nx65.txt" outputs \
