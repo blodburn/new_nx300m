@@ -80,6 +80,28 @@ jobs:
             --report "$RUNNER_TEMP/nx18-test/metrics.json" \
             --github-summary "$GITHUB_STEP_SUMMARY" --observe-only
 
+      - name: Measure RGB8 error concentration vs host LUT density (18³/33³/65³)
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 research/nx300m_lut_grid_diagnostics.py \
+            --input "$ACTUAL_CUBE" --samples 2048 \
+            --grids 18 33 65 --github-summary "$GITHUB_STEP_SUMMARY" \
+            > "$RUNNER_TEMP/nx18-test/grid_report.json"
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          p=Path(os.environ["RUNNER_TEMP"])/"nx18-test"/"grid_report.json"
+          r=json.loads(p.read_text())
+          for s in r["results"]:
+              print(f"GRID {s['grid']}^3: peak RGB8={s['peak_8bit']} "
+                    f"mean RGB8={s['mean_8bit']} "
+                    f"p99 RGB8={s['p99_8bit']} "
+                    f"over12={s['above_12']} "
+                    f"host-table-bytes={s['rgb12_table_bytes']}")
+          PY
+
       - name: Camera firmware safety statement
         shell: bash
         run: |

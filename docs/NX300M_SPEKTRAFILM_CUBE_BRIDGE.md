@@ -126,3 +126,13 @@ a build crash. The actual strict guardrails stay 12.0 peak, 2.0 mean
 No NX300M firmware, camera capture buffer or sensor calibration is involved.
 Any outputs remain CC BY-SA 4.0 derivatives of the upstream profiles,
 not automatically suitable for uncredited third-party distribution.
+
+## Numerical 18/33/65^3 host-table comparison
+
+The ephemeral real-profile workflow also benchmarks 18^3, 33^3, and
+65^3 **12-bit linear** LUT-grid representations against the same real
+sRGB .cube at identical 2,048 Halton samples. It reports peak/mean/p99
+RGB8 errors and number of samples with a channel error >12. All LUT
+nodes stay in runner RAM, and no derivative files are published.
+This diagnostic does not change the fixed 18^3 NX300M host API or claim
+that either larger table is safe on an actual camera.
