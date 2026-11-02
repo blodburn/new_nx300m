@@ -40,6 +40,8 @@ typedef struct {
  * chosen look into at most one JPEG (not 13 files). If film filter fails,
  * JPEG is encoded from unmodified source RGB via a single callback.
  * RAW+JPEG RAW saver is called before JPEG, and RAW bytes are never changed.
+ * A JPEG failure AFTER RAW succeeds returns -1 with raw_saved=1; callers
+ * must inspect result flags for partial success. There is no RAW rollback.
  */
 int nx_shutter_save_selected(const nx_shutter_request *request,
                              nx_shutter_result *result);

@@ -1,6 +1,7 @@
 #define _POSIX_C_SOURCE 200809L
 #include "nx300m_host_capture_copy_adapter.h"
 #include "nx300m_film_menu.h"
+#include "nx300m_still_enhanced.h"
 #include <assert.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -47,6 +48,15 @@ static void test_all_13(void){
    assert(result==NX_HOST_COPY_APPLIED);
    assert(memcmp(target,target_before,sizeof(target))!=0);
    assert(memcmp(source,original,sizeof(source))==0);
+   /* For identical look + RGB pixels, copy and shutter-stage outputs
+     * MUST match byte-for-byte, including row padding. */
+   uint8_t *oracle=malloc(SPAN);
+   assert(oracle);
+   memcpy(oracle,source,SPAN);
+   assert(nx_still_filter_enhanced_inplace(p->id,NX_STILL_SRGB_RGB888,
+          oracle,STRIDE,W,H)==NX_STILL_APPLIED);
+   assert(memcmp(target,oracle,SPAN)==0);
+   free(oracle);
    /* Alignment/padding bytes are not part of image pixels. */
    for(unsigned y=0;y<H;y++)
     for(unsigned col=W*3;col<STRIDE;col++)
