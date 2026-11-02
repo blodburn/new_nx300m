@@ -105,3 +105,34 @@ ISP color matrix / white balance / buffer lifetime; no reversible
 full-brick recovery; no calibrated NX300M reference images. This bridge
 does not add a menu preset or install a LUT on the camera. Never flash
 these host research artifacts.
+
+## Actual SpektraFilm PROVIA 100F host CI (ephemeral)
+
+An additional GitHub Actions workflow in .github/workflows/spektrafilm-profile-check.yml
+executes a real upstream SpektraFilm pipeline in a disposable GitHub runner.
+Upstream pinned SHA: 3bb2c2d2801ff68b92019cf1dbcbb133d60832bc.
+Python 3.13; film: fujifilm_provia_100f; paper: fujifilm_crystal_archive_typeii.
+The workflow bakes a resolution-17 sRGB-in/sRGB-out 1-LUT, converts it
+to 5,832 RGB12 nodes using the independently developed converter, and
+prints 2,048-point numerical max/mean RGB errors and an explicit decision.
+Only metadata and numerical metrics appear in the CI log; no upstream source,
+film profiles, source .cube, or derivative NX18 LUT are committed or uploaded.
+
+The initial real-profile run uses --observe-only: it can record
+REJECT_NUMERICAL_RESCALING without misreporting a valid numeric rejection as
+a build crash. The actual strict guardrails stay 12.0 peak, 2.0 mean
+(8-bit encoded-channel units). A numeric PASS is NOT a camera color proof.
+
+No NX300M firmware, camera capture buffer or sensor calibration is involved.
+Any outputs remain CC BY-SA 4.0 derivatives of the upstream profiles,
+not automatically suitable for uncredited third-party distribution.
+
+## Numerical 18/33/65^3 host-table comparison
+
+The ephemeral real-profile workflow also benchmarks 18^3, 33^3, and
+65^3 **12-bit linear** LUT-grid representations against the same real
+sRGB .cube at identical 2,048 Halton samples. It reports peak/mean/p99
+RGB8 errors and number of samples with a channel error >12. All LUT
+nodes stay in runner RAM, and no derivative files are published.
+This diagnostic does not change the fixed 18^3 NX300M host API or claim
+that either larger table is safe on an actual camera.
