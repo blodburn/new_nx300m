@@ -47,3 +47,23 @@ Other allocations, encoder data structures, OS, image acquisition, ownership/coh
 - `research/test_nx300m_host_lutgrid_jpeg.c`: identity and invert 18/65 synthetic JPEG oracle; file safety; APP1 preservation.
 - `.github/workflows/spektrafilm-profile-check.yml`: ephemeral real PROVIA100F+Crystal Archive LUT65 -> C RGB888 JPEG; derivative LUT/JPEG not uploaded.
 - `docs/NX300M_114_INTEGRATION_GATES.md`: prior firmware authenticity and physical memory constraints.
+
+## Full-resolution host performance / memory reproducibility
+
+The 65³ LUT + independent JPEG adapter is now exercised on deterministic
+**5546×3714 = 20,597,844-pixel** synthetic RGB888 with the actual ephemeral
+SpektraFilm PROVIA100F LUT. A separate small 1024×768 workload repeats 5
+passes for p95, and the full 20.6MP workload runs once. The host benchmark
+reports elapsed time, process high-water RSS (Linux ru_maxrss), encoded JPEG
+bytes, and original-input/LUT checksum stability. It verifies the exact EXIF
+APP1 payload is preserved and refuses destination overwrite. Each output
+JPEG is deleted after verification; neither derivative LUT nor JPEG is
+uploaded. One full-size timing is **not** a statistical p95 latency estimate.
+
+CI enforces a host-runner RSS guard of 256MiB (this is an engineering
+regression threshold, NOT proven NX300M available RAM). Optional reproduction:
+
+    make bench-lut65 LUT65_PATH=/private/authorized_profile.nx65.txt
+
+Recheck original FW1.14 identity, actual ISP output, native ABI and recovery
+before ANY camera target integration. Old modified MFW1.1 = embedded 1.15.
