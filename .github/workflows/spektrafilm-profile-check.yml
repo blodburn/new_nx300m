@@ -1,0 +1,87 @@
+name: SpektraFilm actual film-profile OFFLINE bridge trial
+on:
+  push:
+    paths:
+      - '.github/workflows/spektrafilm-profile-check.yml'
+      - 'research/nx300m_spektrafilm_real_profile_qa.py'
+      - 'research/test_nx300m_spektrafilm_real_profile_qa.py'
+      - 'scripts/nx300m_cube_to_lut18.py'
+  pull_request:
+    paths:
+      - '.github/workflows/spektrafilm-profile-check.yml'
+      - 'research/nx300m_spektrafilm_real_profile_qa.py'
+      - 'research/test_nx300m_spektrafilm_real_profile_qa.py'
+      - 'scripts/nx300m_cube_to_lut18.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  spektrafilm-actual-profile-host-only:
+    name: PROVIA 100F / Crystal Archive -> NX18 (ephemeral)
+    runs-on: ubuntu-latest
+    timeout-minutes: 28
+    env:
+      SPEKTRAFILM_COMMIT: 3bb2c2d2801ff68b92019cf1dbcbb133d60832bc
+      FILM_SLUG: fujifilm_provia_100f
+      PRINT_SLUG: fujifilm_crystal_archive_typeii
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - name: Python 3.13 isolated runtime (upstream not bundled)
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv python install 3.13
+          uv venv --python 3.13 "$RUNNER_TEMP/spektra-venv"
+          uv pip install --python "$RUNNER_TEMP/spektra-venv/bin/python" --no-deps "git+https://github.com/andreavolpato/spektrafilm.git@$SPEKTRAFILM_COMMIT"
+          uv pip install --python "$RUNNER_TEMP/spektra-venv/bin/python" \
+            'numpy~=2.4' 'scipy~=1.17' 'colour-science~=0.4.6' \
+            'scikit-image~=0.26' 'matplotlib~=3.10' 'opt-einsum~=3.4' \
+            'numba~=0.64' 'OpenImageIO~=3.1.11' 'pyfftw~=0.15.0' \
+            'rawpy~=0.26.1' 'exiv2~=0.18.1' 'lensfunpy~=1.18.0'
+
+      - name: Full upstream spectral 3D LUT bake (real film/paper profiles)
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/spektra-output" "$RUNNER_TEMP/nx18-test"
+          "$RUNNER_TEMP/spektra-venv/bin/spektrafilm-lut" build \
+            --film "$FILM_SLUG" --print "$PRINT_SLUG" \
+            --input srgb --output srgb --topology 1lut \
+            --resolution 17 --out "$RUNNER_TEMP/spektra-output"
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+          root = Path(os.environ['RUNNER_TEMP']) / "spektra-output"
+          cubes = sorted(root.rglob("*.cube"))
+          if len(cubes) != 1:
+              raise SystemExit(f"REJECT: expected one 3D LUT, got {len(cubes)}")
+          with open(os.environ['GITHUB_ENV'], 'a', encoding='utf-8') as f:
+              f.write(f"ACTUAL_CUBE={cubes[0]}\n")
+          print("SpektraFilm generated one real-profiles .cube; output is ephemeral.")
+          PY
+
+      - name: Offline 18^3 conversion, fail-closed RGB12 integrity and numerical QA
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/nx300m_cube_to_lut18.py \
+            --input "$ACTUAL_CUBE" \
+            --output "$RUNNER_TEMP/nx18-test/provia100f.nx18.txt" \
+            --qa "$RUNNER_TEMP/nx18-test/metrics.json" \
+            --source-name "SpektraFilm PROVIA 100F + Crystal Archive, upstream pinned SHA" \
+            --license-id "CC-BY-SA-4.0" \
+            --samples 2048 \
+            --max-error-8bit 255 --mean-error-8bit 255 \
+            > "$RUNNER_TEMP/nx18-test/conversion.json"
+          python3 research/nx300m_spektrafilm_real_profile_qa.py \
+            --report "$RUNNER_TEMP/nx18-test/metrics.json" \
+            --github-summary "$GITHUB_STEP_SUMMARY" --observe-only
+
+      - name: Camera firmware safety statement
+        shell: bash
+        run: |
+          echo "HOST RESEARCH ONLY. No real NX300M FW1.14, native ABI, camera color calibration, hardware memory or flash test."
+          echo "No film profile, generated .cube or NX18 LUT uploaded as an artifact."
