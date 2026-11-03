@@ -1,0 +1,149 @@
+name: NX300M FW114 glibc-free ARMv7 LUT65 kernel
+
+on:
+  push:
+    paths:
+      - ".github/workflows/nx300m-fw114-freestanding-lut.yml"
+      - "research/nx300m_freestanding_lut_core.c"
+      - "research/nx300m_freestanding_lut_core.h"
+      - "research/test_nx300m_freestanding_lut_core.c"
+      - "research/nx300m_lut_grid_host.c"
+      - "research/nx300m_fw114_arm_loader_abi.py"
+      - "Makefile"
+  pull_request:
+    paths:
+      - ".github/workflows/nx300m-fw114-freestanding-lut.yml"
+      - "research/nx300m_freestanding_lut_core.c"
+      - "research/nx300m_freestanding_lut_core.h"
+      - "research/test_nx300m_freestanding_lut_core.c"
+      - "research/nx300m_lut_grid_host.c"
+      - "research/nx300m_fw114_arm_loader_abi.py"
+      - "Makefile"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  armv7-vfpv2-no-libc:
+    name: ARMv7/VFPv2 independent LUT65 DSO - zero GLIBC dependency
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run standalone host no-libc LUT reference parity test
+        shell: bash
+        run: |
+          set -euo pipefail
+          make freestanding-test
+
+      - name: Install ARM EABI cross-compiler, readelf and QEMU userspace
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq \
+            gcc-arm-linux-gnueabi binutils-arm-linux-gnueabi qemu-user
+
+      - name: Build a no-CRT, no-libc, no-libgcc ARMv7/VFPv2 LUT65 DSO
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .build
+          arm-linux-gnueabi-gcc \
+            -march=armv7-a -mfpu=vfpv2 -mfloat-abi=softfp \
+            -std=c11 -O2 -Wall -Wextra -Werror \
+            -fPIC -ffreestanding -fno-builtin -fno-stack-protector \
+            -fvisibility=hidden -shared \
+            -nostdlib -nostartfiles -nodefaultlibs \
+            -Wl,--no-undefined -Wl,-z,defs -Wl,-z,relro -Wl,-z,now \
+            -Wl,-soname,libnx300m_filmcore_nolibc.so \
+            -Iresearch research/nx300m_freestanding_lut_core.c \
+            -o .build/libnx300m_filmcore_nolibc_armv7.so
+
+      - name: Verify actual ARM DSO ABI and absence of runtime dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import subprocess,sys
+          from pathlib import Path
+          sys.path.insert(0,"research")
+          import nx300m_fw114_arm_loader_abi as audit
+          p=Path(".build/libnx300m_filmcore_nolibc_armv7.so")
+          info=audit.inspect_elf(p)
+          if info["eabi"]!=5 or info["tag_cpu_arch"]!="v7" or (
+              "VFPv2" not in info["tag_fp_arch"]
+          ):
+              raise SystemExit("REJECT: wrong ARMv7/VFPv2 target")
+          if info["e_type"]!=3 or info["program_interpreter"] is not None:
+              raise SystemExit("REJECT: not a freestanding ELF shared object")
+          if info["needed_sonames"]:
+              raise SystemExit("REJECT: external shared library dependencies "+
+                               repr(info["needed_sonames"]))
+          syms=subprocess.check_output(
+              ["arm-linux-gnueabi-readelf","-W","--dyn-syms",str(p)],
+              text=True)
+          names=[]
+          for line in syms.splitlines():
+              columns=line.split()
+              if len(columns)>=7 and columns[0].endswith(":") and (
+                  columns[0][:-1].isdigit()
+              ):
+                  ndx=columns[6]
+                  symbol=columns[7] if len(columns)>7 else ""
+                  if ndx=="UND" and symbol:
+                      raise SystemExit("REJECT: unresolved global ELF symbol "+symbol)
+                  if ndx!="UND" and len(columns)>7 and (
+                      columns[4] in ("GLOBAL","WEAK")
+                  ):
+                      names.append(symbol)
+          if names!=["nx_film_core_apply_rgb12"]:
+              raise SystemExit("REJECT: unexpected DSO export names "+repr(names))
+          version=subprocess.run(["arm-linux-gnueabi-readelf","-W","-V",str(p)],
+                    capture_output=True,text=True,check=True)
+          if "GLIBC_" in version.stdout:
+              raise SystemExit("REJECT: GLIBC version dependency")
+          print("PASS_ARMV7_FREESTANDING_ELF",info["tag_cpu_arch"],
+                info["tag_fp_arch"],"needed",len(info["needed_sonames"]),
+                "runtime_glibc_versions",0,"exports",names[0])
+          with open(__import__("os").environ["GITHUB_STEP_SUMMARY"],"a",
+                    encoding="utf8") as f:
+              f.write("### NX300M GLIBC-free RGB12 LUT computation ONLY\n\n")
+              f.write("ARM EABI5, ARMv7, VFPv2, no libc/crt/libgcc, "
+                      "no NEEDED libraries, no GLIBC symbol versions, "
+                      "exactly one defined API export. "
+                      "Does NOT establish Samsung Tizen loader compatibility, "
+                      "ISP access, JPEG/EXIF, or firmware flash safety.\n")
+          PY
+
+      - name: Test dlopen module and independent 2/18/65-grid parity under QEMU
+        shell: bash
+        run: |
+          set -euo pipefail
+          arm-linux-gnueabi-gcc \
+            -march=armv7-a -mfpu=vfpv2 -mfloat-abi=softfp \
+            -std=c11 -O2 -Wall -Wextra -Werror -Iresearch \
+            research/test_nx300m_freestanding_lut_core.c \
+            research/nx300m_lut_grid_host.c \
+            -ldl -o .build/test_nx300m_freestanding_lut_core_armv7
+          qemu-arm -cpu cortex-a9 -L /usr/arm-linux-gnueabi \
+            .build/test_nx300m_freestanding_lut_core_armv7 \
+            .build/libnx300m_filmcore_nolibc_armv7.so \
+            | tee "$RUNNER_TEMP/nx300m_no_libc_armv7_parity.log"
+          grep -q '^PASS freestanding LUT 65\^3' \
+            "$RUNNER_TEMP/nx300m_no_libc_armv7_parity.log"
+          grep -q '^PASS ARMv7/QEMU freestanding C ABI' \
+            "$RUNNER_TEMP/nx300m_no_libc_armv7_parity.log"
+
+      - name: Clean all freestanding test binaries
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f .build/libnx300m_filmcore_nolibc_armv7.so \
+                .build/test_nx300m_freestanding_lut_core_armv7 \
+                .build/libnx300m_filmcore_nolibc.so \
+                .build/test_nx300m_freestanding_lut_core
+          echo 'No ELF module, proprietary camera artifact or firmware uploaded.'
