@@ -104,7 +104,8 @@ def inspect_ubi_headers(platform: Path) -> dict:
     if size < 2 * PEB or size % PEB:
         raise ValueError("Platform image is not aligned to known NX300M NAND PEB")
     count = size // PEB
-    indices = sorted(set((0, 1, 2, min(33, count-1), count // 2, count-1)))
+    indices = sorted(i for i in set((0, 1, 2, min(33, count-1),
+                                   count // 2, count-1)) if i < count)
     headers = []
     with platform.open("rb") as f:
         for index in indices:
