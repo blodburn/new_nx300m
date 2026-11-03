@@ -12,6 +12,10 @@ on:
       - 'research/nx300m_host_lutgrid_jpeg.c'
       - 'research/test_nx300m_host_lutgrid_jpeg.c'
       - 'research/bench_nx300m_lut65_jpeg.c'
+      - 'research/nx300m_host420_lutgrid_jpeg.c'
+      - 'research/nx300m_host420_lutgrid_jpeg.h'
+      - 'research/test_nx300m_host420_lutgrid_jpeg.c'
+      - 'research/bench_nx300m_host420_lut65_jpeg.c'
   pull_request:
     paths:
       - '.github/workflows/spektrafilm-profile-check.yml'
@@ -24,6 +28,10 @@ on:
       - 'research/nx300m_host_lutgrid_jpeg.c'
       - 'research/test_nx300m_host_lutgrid_jpeg.c'
       - 'research/bench_nx300m_lut65_jpeg.c'
+      - 'research/nx300m_host420_lutgrid_jpeg.c'
+      - 'research/nx300m_host420_lutgrid_jpeg.h'
+      - 'research/test_nx300m_host420_lutgrid_jpeg.c'
+      - 'research/bench_nx300m_host420_lut65_jpeg.c'
   workflow_dispatch:
 
 permissions:
@@ -218,6 +226,68 @@ jobs:
                           f' | {v["seconds_p95"]:.3f} | {v["peak_process_rss_kib"]/1024:.2f}'
                           f' | {v["jpeg_size_bytes"]:,} |\n')
           print("PASS host memory/performance metrics captured: no camera claims")
+          PY
+
+      - name: Compare stream Y/C420 to RGB888 JPEG and measure 20.6MP memory
+        shell: bash
+        timeout-minutes: 14
+        run: |
+          set -euo pipefail
+          gcc -std=c11 -O3 -Wall -Wextra -Werror -Iresearch \
+            research/bench_nx300m_host420_lut65_jpeg.c \
+            research/nx300m_host420_lutgrid_jpeg.c \
+            research/nx300m_ycc420_multimodel_probe.c \
+            research/nx300m_lut_grid_host.c \
+            research/nx300m_preview_rgb.c \
+            research/nx300m_lut18.c \
+            research/nx300m_host_jpeg_sink.c \
+            -lm -o "$RUNNER_TEMP/bench_host420_lut65"
+          "$RUNNER_TEMP/bench_host420_lut65" small \
+            "$RUNNER_TEMP/nx18-test/provia100f.nx65.txt" outputs \
+            | tee "$RUNNER_TEMP/nx18-test/bench_yc_small.txt"
+          "$RUNNER_TEMP/bench_host420_lut65" full \
+            "$RUNNER_TEMP/nx18-test/provia100f.nx65.txt" outputs \
+            | tee "$RUNNER_TEMP/nx18-test/bench_yc_full.txt"
+          python3 - <<'PY'
+          import json,os
+          from pathlib import Path
+          root=Path(os.environ['RUNNER_TEMP'])/'nx18-test'
+          def row(name,prefix):
+              rows=[json.loads(s[len(prefix):]) for s in
+                    (root/name).read_text().splitlines() if s.startswith(prefix)]
+              if len(rows)!=1:raise SystemExit('REJECT: bad bench report '+name)
+              return rows[0]
+          yc=[]
+          for name in ('bench_yc_small.txt','bench_yc_full.txt'):
+              r=row(name,'NX65_HOST420_BENCH_JSON ')
+              for key in ('host_only','inputs_unchanged','exif_app1_preserved',
+                          'overwrite_blocked','outputs_deleted'):
+                  if r.get(key) is not True:raise SystemExit('REJECT '+key)
+              if r['camera_firmware_verified'] is not False:
+                  raise SystemExit('REJECT false camera proof')
+              if r['peak_rss_kib']>80*1024:
+                  raise SystemExit('REJECT Y/C host RSS >80 MiB')
+              yc.append(r)
+          rgb=row('bench_full.txt','NX65_HOST_BENCH_JSON ')
+          if yc[1]['width']*yc[1]['height']!=5546*3714 or yc[1]['repeats']!=1:
+              raise SystemExit('REJECT incorrect 20.6MP Y/C input')
+          saved=rgb['peak_process_rss_kib']-yc[1]['peak_rss_kib']
+          if saved<10*1024:
+              raise SystemExit(f'REJECT: memory improvement insufficient ({saved} KiB)')
+          print('HOST_YCC420_MEMORY_KIB_SAVED',saved)
+          with open(os.environ['GITHUB_STEP_SUMMARY'],'a',encoding='utf-8') as summary:
+              summary.write('\n### 20.6MP host memory comparison with actual PROVIA 100F LUT65\n')
+              summary.write('| Input | Median seconds (1 full run) | Peak process RSS MiB | Input buffer MiB |\n')
+              summary.write('|---|---:|---:|---:|\n')
+              summary.write(f'| Copied RGB888 | {rgb["seconds_median"]:.3f}'
+                            f' | {rgb["peak_process_rss_kib"]/1024:.2f}'
+                            f' | {rgb["input_copy_bytes"]/1048576:.2f} |\n')
+              summary.write(f'| Copied synthetic Y/C420 | {yc[1]["seconds_median"]:.3f}'
+                            f' | {yc[1]["peak_rss_kib"]/1024:.2f}'
+                            f' | {(yc[1]["y_plane_bytes"]+yc[1]["chroma_plane_bytes"])/1048576:.2f} |\n')
+              summary.write(f'\nHost RSS saving **{saved/1024:.2f} MiB**. Camera memory,'
+                            ' buffer format and performance NOT validated.\n')
+          print('PASS Y/C420 vs RGB888 host memory delta, no camera claims')
           PY
 
       - name: Camera firmware safety statement
