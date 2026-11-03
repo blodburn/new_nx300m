@@ -246,3 +246,41 @@ camera patch or flash occurs here.
 The 2.2 MB 65-grid LUT must still be provided/owned by an actual
 proven-safe target caller, which is not implemented. The testing module
 does not contain proprietary film LUT contents or a camera image.
+
+
+## Freestanding copy-owned Y/C420 -> LUT65 -> RGB888 bridge
+
+research/nx300m_freestanding_owned420_bridge.c connects the independent
+no-libc LUT65 integer kernel to an **explicitly caller-owned off-camera
+Y/C420 hypothesis input**, without adding GLIBC dependencies:
+
+    caller-owned Y bytes + interleaved chroma bytes
+          | (validate bounded dimensions/strides/byte lengths)
+          | (require explicit copy-declaration + BT.601 full-range hypothesis
+          |  and CbCr or CrCb order; do NOT claim real camera format)
+          V
+    RGB888 temporary pixel -> caller-provided sRGB decode table (256)
+          V
+    RGB12 no-libc LUT2/18/65 fixed-point grid
+          V
+    caller-provided sRGB encode table (4096)
+          V
+    caller-owned RGB888 output (unchanged row padding)
+
+All source planes, LUT and gamma tables remain unchanged. Invalid
+parameters or overlapping source/destination buffer address ranges are
+rejected **before** output writes. No heap allocation, gamma pow(), file
+I/O, camera API, firmware patch, JPEG/EXIF or actual camera DMA pointer.
+
+Tests load the ARMv7 DSO under QEMU and compare its RGB888 results
+to the independent host nx_lut_grid_host_apply() oracle with synthetic
+Y/C samples. They test the two packing hypotheses, three LUT grid sizes,
+padding, source immutability, invalid lengths/ownership declarations, odd
+sizes and buffer overlaps. ARM ELF CI still enforces **zero DT_NEEDED,
+zero GLIBC symbols and only two declared exports**.
+
+Important: caller's copy declaration is an API contract, **not proof
+of actual DMA ownership or the native NX300M Y/C matrix and range**.
+This is a host synthetic bridge, not a deployed camera capture hook.
+JPEG/EXIF connection, memory budget, recovery and physical camera
+validation are open. Firmware installation remains **NO-GO**.
