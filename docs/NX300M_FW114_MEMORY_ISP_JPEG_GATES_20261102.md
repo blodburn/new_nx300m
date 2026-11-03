@@ -67,3 +67,32 @@ regression threshold, NOT proven NX300M available RAM). Optional reproduction:
 
 Recheck original FW1.14 identity, actual ISP output, native ABI and recovery
 before ANY camera target integration. Old modified MFW1.1 = embedded 1.15.
+
+## Synthetic Y/C420 streaming LUT65 benchmark and strict proof gates
+
+A new host-only function `nx_host420_lutgrid_jpeg_hypothesis` streams
+COPY-OWNED Y and interleaved chroma planes to the independent 65³
+LUT host engine and one new 4:2:0 JPEG, without creating a full-frame
+RGB888 intermediate. Matrix, range and CbCr/CrCb order are **explicit,
+unverified hypotheses**: this API must not receive live device/DMA pointers.
+The second API, `nx_host420_lutgrid_jpeg_from_reference`, performs a
+fresh eight-model color/hypothesis score with an independently acquired
+same-stage reference and rejects ambiguous cases before writing.
+
+Synthetic unit tests compare byte-for-byte JPEG hashes with the earlier
+copy-RGB888 LUT path for BT.601/709, full/limited and both chroma orders,
+with 18³ and 65³ LUTs, and check Original bypass, source immutability,
+EXIF APP1, no overwrite and fail-closed input validation.
+
+GitHub Actions uses the same ephemeral, legally generated PROVIA100F
+65³ LUT for **5546×3714** synthetic Y/C420 JPEG host benchmarking and
+compares Linux peak process RSS against the earlier copied RGB888 path.
+It records process elapsed time (one full-resolution sample only), output
+bytes, input+LUT immutability, APP1 and file-publish safety. Bench scripts:
+
+    make bench-host420-lut65 LUT65_PATH=/private/authorized_profile.nx65.txt
+
+**This is not proof that NX300M firmware 1.14 uses any tested chroma
+hypothesis, owns Y/C buffers in this shape, or can spare the measured RAM.**
+The real camera integration stays NO-GO until read-only FW1.14/capture
+and recovery conditions are satisfied.
