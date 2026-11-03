@@ -179,3 +179,31 @@ JpegEncode, EncodeYcc, EXIF and MakerNotes. Test the previous 1.15 exact
 JPEG SOF 4:2:2/4:2:0 ARM opcode signature against 1.14 independently.
 This verifies specific instructions only, not native runtime ABI, DMA
 ownership, camera RAM, or recovery. Installation remains **NO-GO**.
+
+## REAL FW1.14 native JPEG function-body comparison (run 41604709782)
+
+Static ARM32 PT_LOAD file-backed function-body SHA-256 comparisons from the
+same temporary, version-validated UBI/UBIFS files:
+
+| Native ELF + function | Version 1.14 address | Version 1.15 address | Code-body SHA equal |
+|---|---|---|---|
+| `libmm-photo.so` `CMmDeviceDriver::EncodeYcc(CYcc&, unsigned int)` | 0x00034b18 | 0x00034b18 | **YES** (644 bytes) |
+| `libsif.so` `DscJfifHal::Parse` | 0x00029084 | 0x00029084 | **NO** (1216 bytes) |
+| `libsif.so` `DscJfifHal::Encode` | 0x00029830 | 0x00029830 | **NO** (936 bytes) |
+| `libsif.so` `DscJfif::JpegEncode` | 0x00028a88 | 0x00028a88 | **NO** (456 bytes) |
+| `libsif.so` `DscImage::CopyExifInfo` | 0x00059900 | 0x000597f8 | **NO** (772 bytes) |
+| `libsif.so` `DscImage::GetExifImageInfo` | 0x00057320 | 0x00057218 | **NO** (192 bytes) |
+| `libsif.so` `DscImage::SaveExifImage` | 0x0005b9b4 | 0x0005b8ac | **NO** (1212 bytes) |
+
+The earlier FW1.15 JPG SOF sampling branch **exactly matched 12 of 12**
+old-reference ARM instruction words in actual mirror FW1.14 `libsif.so`,
+including 0x21 (4:2:2) and 0x22 (4:2:0) branches. **This is a local
+instruction observation, not evidence that JPEG function bodies are equal:
+they are not.** Do not reuse 1.15 function sizes/addresses/patches without
+version-specific proof and independently verified hardware recovery.
+
+**Completion gates still open**: trusted manufacturer-source identity,
+Picture Wizard + capture callback dynamic paths on actual FW1.14,
+full JPEG encoder/EXIF/MakerNotes compatibility, real live Y/C buffer
+shape and ownership, camera RAM and save latency, safe firmware roll-back
+and full-brick recovery. No real camera was accessed.
