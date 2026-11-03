@@ -116,10 +116,20 @@ freestanding-test:
 	  -Wl,--no-undefined -Wl,-z,defs -Wl,-z,relro -Wl,-z,now \
 	  -Wl,-soname,libnx300m_filmcore_nolibc.so \
 	  -Iresearch research/nx300m_freestanding_lut_core.c \
+	  research/nx300m_freestanding_owned420_bridge.c \
 	  -o .build/libnx300m_filmcore_nolibc.so
 	$(CC) -std=c11 -O2 -Wall -Wextra -Werror \
 	  -Iresearch research/test_nx300m_freestanding_lut_core.c \
 	  research/nx300m_lut_grid_host.c -ldl \
 	  -o .build/test_nx300m_freestanding_lut_core
 	.build/test_nx300m_freestanding_lut_core \
+	  .build/libnx300m_filmcore_nolibc.so
+
+	$(CC) -std=c11 -O2 -Wall -Wextra -Werror \
+	  -Iresearch research/test_nx300m_freestanding_owned420_bridge.c \
+	  research/nx300m_lut_grid_host.c \
+	  research/nx300m_preview_rgb.c \
+	  research/nx300m_lut18.c -ldl -lm \
+	  -o .build/test_nx300m_freestanding_owned420_bridge
+	.build/test_nx300m_freestanding_owned420_bridge \
 	  .build/libnx300m_filmcore_nolibc.so

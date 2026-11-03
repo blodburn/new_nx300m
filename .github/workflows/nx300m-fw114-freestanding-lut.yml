@@ -7,6 +7,9 @@ on:
       - "research/nx300m_freestanding_lut_core.c"
       - "research/nx300m_freestanding_lut_core.h"
       - "research/test_nx300m_freestanding_lut_core.c"
+      - "research/nx300m_freestanding_owned420_bridge.c"
+      - "research/nx300m_freestanding_owned420_bridge.h"
+      - "research/test_nx300m_freestanding_owned420_bridge.c"
       - "research/nx300m_lut_grid_host.c"
       - "research/nx300m_fw114_arm_loader_abi.py"
       - "Makefile"
@@ -16,6 +19,9 @@ on:
       - "research/nx300m_freestanding_lut_core.c"
       - "research/nx300m_freestanding_lut_core.h"
       - "research/test_nx300m_freestanding_lut_core.c"
+      - "research/nx300m_freestanding_owned420_bridge.c"
+      - "research/nx300m_freestanding_owned420_bridge.h"
+      - "research/test_nx300m_freestanding_owned420_bridge.c"
       - "research/nx300m_lut_grid_host.c"
       - "research/nx300m_fw114_arm_loader_abi.py"
       - "Makefile"
@@ -60,6 +66,7 @@ jobs:
             -Wl,--no-undefined -Wl,-z,defs -Wl,-z,relro -Wl,-z,now \
             -Wl,-soname,libnx300m_filmcore_nolibc.so \
             -Iresearch research/nx300m_freestanding_lut_core.c \
+            research/nx300m_freestanding_owned420_bridge.c \
             -o .build/libnx300m_filmcore_nolibc_armv7.so
 
       - name: Verify actual ARM DSO ABI and absence of runtime dependencies
@@ -99,7 +106,8 @@ jobs:
                       columns[4] in ("GLOBAL","WEAK")
                   ):
                       names.append(symbol)
-          if names!=["nx_film_core_apply_rgb12"]:
+          if sorted(names)!=sorted(["nx_film_core_apply_rgb12",
+                                   "nx_film_core_render_owned420_hypothesis"]):
               raise SystemExit("REJECT: unexpected DSO export names "+repr(names))
           version=subprocess.run(["arm-linux-gnueabi-readelf","-W","-V",str(p)],
                     capture_output=True,text=True,check=True)
@@ -107,7 +115,7 @@ jobs:
               raise SystemExit("REJECT: GLIBC version dependency")
           print("PASS_ARMV7_FREESTANDING_ELF",info["tag_cpu_arch"],
                 info["tag_fp_arch"],"needed",len(info["needed_sonames"]),
-                "runtime_glibc_versions",0,"exports",names[0])
+                "runtime_glibc_versions",0,"exports",",".join(names))
           with open(__import__("os").environ["GITHUB_STEP_SUMMARY"],"a",
                     encoding="utf8") as f:
               f.write("### NX300M GLIBC-free RGB12 LUT computation ONLY\n\n")
@@ -137,6 +145,29 @@ jobs:
           grep -q '^PASS ARMv7/QEMU freestanding C ABI' \
             "$RUNNER_TEMP/nx300m_no_libc_armv7_parity.log"
 
+      - name: Test copy-owned Y/C420 BT601 full-range hypotheses against independent RGB host oracle
+        shell: bash
+        run: |
+          set -euo pipefail
+          arm-linux-gnueabi-gcc \
+            -march=armv7-a -mfpu=vfpv2 -mfloat-abi=softfp \
+            -std=c11 -O2 -Wall -Wextra -Werror -Iresearch \
+            research/test_nx300m_freestanding_owned420_bridge.c \
+            research/nx300m_lut_grid_host.c \
+            research/nx300m_preview_rgb.c \
+            research/nx300m_lut18.c \
+            -ldl -lm -o .build/test_nx300m_freestanding_owned420_bridge_armv7
+          qemu-arm -cpu cortex-a9 -L /usr/arm-linux-gnueabi \
+            .build/test_nx300m_freestanding_owned420_bridge_armv7 \
+            .build/libnx300m_filmcore_nolibc_armv7.so \
+            | tee "$RUNNER_TEMP/armv7_owned420_hypotheses.log"
+          grep -q '^PASS owned420 GLIBC-free bridge: grid=65 order=1' \
+            "$RUNNER_TEMP/armv7_owned420_hypotheses.log"
+          grep -q '^PASS owned420 GLIBC-free bridge: grid=65 order=2' \
+            "$RUNNER_TEMP/armv7_owned420_hypotheses.log"
+          grep -q '^PASS GLIBC-FREE owned Y/C420 copy hypothesis' \
+            "$RUNNER_TEMP/armv7_owned420_hypotheses.log"
+
       - name: Clean all freestanding test binaries
         if: always()
         shell: bash
@@ -144,6 +175,7 @@ jobs:
           set -euo pipefail
           rm -f .build/libnx300m_filmcore_nolibc_armv7.so \
                 .build/test_nx300m_freestanding_lut_core_armv7 \
+                .build/test_nx300m_freestanding_owned420_bridge_armv7 \
                 .build/libnx300m_filmcore_nolibc.so \
                 .build/test_nx300m_freestanding_lut_core
           echo 'No ELF module, proprietary camera artifact or firmware uploaded.'
