@@ -1,0 +1,104 @@
+name: NX300M ARM32 offline film pipeline and passive field probe
+
+on:
+  push:
+    paths:
+      - ".github/workflows/nx300m-arm32-passive-probe.yml"
+      - "research/nx300m_host420_lutgrid_jpeg.c"
+      - "research/nx300m_host420_lutgrid_jpeg.h"
+      - "research/test_nx300m_host420_lutgrid_jpeg.c"
+      - "research/nx300m_fw114_runtime_metadata_gate.py"
+      - "research/test_nx300m_fw114_runtime_metadata_gate.py"
+      - "scripts/nx300m_fw114_runtime_metadata_probe.sh"
+  pull_request:
+    paths:
+      - ".github/workflows/nx300m-arm32-passive-probe.yml"
+      - "research/nx300m_host420_lutgrid_jpeg.c"
+      - "research/nx300m_host420_lutgrid_jpeg.h"
+      - "research/test_nx300m_host420_lutgrid_jpeg.c"
+      - "research/nx300m_fw114_runtime_metadata_gate.py"
+      - "research/test_nx300m_fw114_runtime_metadata_gate.py"
+      - "scripts/nx300m_fw114_runtime_metadata_probe.sh"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  arm32-gnu-glibc-host-only:
+    name: ARM32 QEMU Y/C420 LUT65 JPEG + passive probe regression
+    runs-on: ubuntu-latest
+    timeout-minutes: 22
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check strict read-only process metadata and synthetic attack cases
+        shell: bash
+        run: |
+          set -euo pipefail
+          sh -n scripts/nx300m_fw114_runtime_metadata_probe.sh
+          python3 research/test_nx300m_fw114_runtime_metadata_gate.py
+
+      - name: Install GNU ARM32 cross compiler and QEMU userspace
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq \
+            gcc-arm-linux-gnueabi qemu-user binutils-arm-linux-gnueabi
+          command -v arm-linux-gnueabi-gcc
+          command -v qemu-arm
+
+      - name: Build independent 65-grid Y/C420→JPEG test as ARM EABI32 executable
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .build outputs
+          arm-linux-gnueabi-gcc \
+            -std=c11 -O2 -Wall -Wextra -Werror -Iresearch \
+            research/test_nx300m_host420_lutgrid_jpeg.c \
+            research/nx300m_host420_lutgrid_jpeg.c \
+            research/nx300m_ycc420_multimodel_probe.c \
+            research/nx300m_lut_grid_host.c \
+            research/nx300m_preview_rgb.c \
+            research/nx300m_lut18.c \
+            research/nx300m_host_jpeg_sink.c \
+            -lm -o .build/nx300m_arm32_copyonly_lut65_jpeg_test
+          arm-linux-gnueabi-readelf -h .build/nx300m_arm32_copyonly_lut65_jpeg_test \
+            | tee "$RUNNER_TEMP/arm32_elf_header.txt"
+          grep -Eq 'Machine:[[:space:]]+ARM' "$RUNNER_TEMP/arm32_elf_header.txt"
+          qemu-arm -L /usr/arm-linux-gnueabi \
+            .build/nx300m_arm32_copyonly_lut65_jpeg_test \
+            | tee "$RUNNER_TEMP/arm32_synthetic_parity.log"
+          grep -q 'PASS 8 Y/C420' "$RUNNER_TEMP/arm32_synthetic_parity.log"
+          printf '%s\n' \
+            'ARM32 GCC EABI + Linux glibc QEMU PASS, no physical camera or Tizen ABI claim' \
+            >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Reject unsafe ARM-on-camera conclusions
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          s=Path('scripts/nx300m_fw114_runtime_metadata_probe.sh').read_text()
+          checks=(
+              "'firmware_flash_permitted=no'",
+              "'firmware_write_performed=no'",
+              "'live_capture_callback_verified=no'",
+              "'live_ycc420_layout_verified=no'",
+              "'native_buffer_ownership_verified=no'",
+          )
+          if not all(x in s for x in checks):
+              raise SystemExit('REJECT: on-camera safety gates weakened')
+          print('PASS: read-only probe has explicit no-go markers')
+          PY
+
+      - name: Clean synthetic outputs and executable
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f .build/nx300m_arm32_copyonly_lut65_jpeg_test
+          find outputs -maxdepth 1 -type f -name 'stream420_*.jpg' -delete \
+            2>/dev/null || true
+          echo 'No firmware, camera captures or ARM executables are uploaded.'
