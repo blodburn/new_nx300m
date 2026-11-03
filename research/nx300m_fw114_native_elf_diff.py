@@ -24,6 +24,7 @@ import zipfile
 
 import nx300m_slp_firmware_integrity as slp
 import nx300m_fw114_function_proofs as focus
+import nx300m_fw114_capture_jpeg_route as static_route
 
 PEB = 131072
 VID = 2048
@@ -237,6 +238,21 @@ def inspected_candidates(root: Path) -> dict:
     return results
 
 
+def select_route_elves(root: Path) -> dict[str,Path]:
+    """Require a unique, regular, non-symlink ELF for each native route node."""
+    found: dict[str,Path] = {}
+    targets = {static_route.CAPTURE,static_route.PHOTO,static_route.SIF}
+    for p in root.rglob("*"):
+        if p.name not in targets:
+            continue
+        if p.is_symlink() or not p.is_file() or p.name in found:
+            raise ValueError("Ambiguous or symlinked native route file: "+p.name)
+        found[p.name]=p
+    if set(found)!=targets:
+        raise ValueError("Missing required native capture/photo/SIF route ELF")
+    return found
+
+
 def compare_inventory(a: dict, b: dict) -> dict:
     names = sorted(set(a) & set(b))
     by_file = []
@@ -292,6 +308,7 @@ def analyze(archives: dict[str, Path], private_root: Path,
     with tempfile.TemporaryDirectory(prefix="nx300m_fw_elf_", dir=private_root) as t:
         private = Path(t)
         inventories = {}
+        route_paths = {}
         for version in ("1.14", "1.15"):
             source = archives[version]
             if source.is_symlink() or not source.is_file():
@@ -301,15 +318,19 @@ def analyze(archives: dict[str, Path], private_root: Path,
             root = private / ("root_" + version.replace(".", ""))
             run_reader(reader, platform, root)
             s["native_elfs"] = inspected_candidates(root)
+            route_paths[version] = select_route_elves(root)
             inventories[version] = s["native_elfs"]
             evidence[version] = s
         result = compare_inventory(inventories["1.14"], inventories["1.15"])
+        route = static_route.compare_versions(
+            route_paths["1.14"],route_paths["1.15"],inventories)
         return {
             "scope": "UNOFFICIAL_MIRROR_OFFLINE_HOST_ONLY",
             "source_chain_of_custody_confirmed": False,
             "fw114": evidence["1.14"],
             "fw115": evidence["1.15"],
             "comparison": result,
+            "capture_to_jpeg_static_route": route,
             "camera_flash_permitted": False,
             "camera_isp_buffer_contract_verified": False,
             "camera_recovery_procedure_verified": False,
@@ -340,6 +361,18 @@ def main(argv: list[str] | None = None) -> int:
                     f.write(f'| {x["library"]} | {x["fw114_bytes"]:,} |'
                             f' {x["fw115_bytes"]:,} | {x["file_identical"]} |'
                             f' {len(x["sampled_symbol_value_changes"])} |\n')
+                route = r["capture_to_jpeg_static_route"]
+                f.write("\n### Capture → EncodeYcc → JPEG/EXIF static callsite proof\n")
+                f.write("| Version | Mode-7 still calls | Photo JPEG edges | "
+                        "SIF EncodeYCC symbol import/export |\n")
+                f.write("|---|---:|---:|---|\n")
+                for version in ("1.14","1.15"):
+                    proof = route["fw"+version.replace(".","")]
+                    f.write(f'| {version} | {proof["capture_recipe_calls_verified"]}'
+                            f' | {proof["photo_encodeycc_edges_verified"]}'
+                            f' | {proof["photo_to_sif_encodeycc_link"]["photolib_plt_import_sif_export_mangled_equal"]} |\n')
+                f.write("\nNo live callback, DMA/YCC ownership, MakerNotes, "
+                        "recovery or camera flash proof.\n")
                 f.write("\n**Physical NX300M integration still NO-GO.**\n")
         return 0
     except (OSError, ValueError, zipfile.BadZipFile,

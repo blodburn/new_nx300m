@@ -23,6 +23,7 @@ test: multimodel-test
 	@python3 research/test_nx300m_unofficial_archive_acquire.py
 	@python3 research/test_nx300m_fw114_native_elf_diff.py
 	@python3 research/test_nx300m_fw114_function_proofs.py
+	@python3 research/test_nx300m_fw114_capture_jpeg_route.py
 	@python3 research/test_nx300m_capture_manifest_gate.py
 	@python3 research/test_nx300m_cube_to_lut18.py
 	@python3 research/test_nx300m_spektrafilm_real_profile_qa.py
