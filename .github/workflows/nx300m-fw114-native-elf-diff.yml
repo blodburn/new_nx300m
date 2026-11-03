@@ -1,0 +1,118 @@
+name: NX300M FW114 offline native camera ELF contrast
+
+on:
+  push:
+    paths:
+      - '.github/workflows/nx300m-fw114-native-elf-diff.yml'
+      - 'research/nx300m_fw114_native_elf_diff.py'
+      - 'research/nx300m_fw114_function_proofs.py'
+      - 'research/test_nx300m_fw114_function_proofs.py'
+      - 'research/test_nx300m_fw114_native_elf_diff.py'
+      - 'research/nx300m_unofficial_archive_acquire.py'
+      - 'research/nx300m_slp_firmware_integrity.py'
+  pull_request:
+    paths:
+      - '.github/workflows/nx300m-fw114-native-elf-diff.yml'
+      - 'research/nx300m_fw114_native_elf_diff.py'
+      - 'research/nx300m_fw114_function_proofs.py'
+      - 'research/test_nx300m_fw114_function_proofs.py'
+      - 'research/test_nx300m_fw114_native_elf_diff.py'
+      - 'research/nx300m_unofficial_archive_acquire.py'
+      - 'research/nx300m_slp_firmware_integrity.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  compare-actual-camera-elves-offline:
+    name: Read-only real FW1.14/1.15 UBI→ELF symbol contrast
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run synthetic extraction and ABI fail-closed tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 research/test_nx300m_fw114_native_elf_diff.py
+          python3 research/test_nx300m_fw114_function_proofs.py
+          python3 research/test_nx300m_fw114_binary_delta.py
+
+      - name: Install pinned offline UBI reader in ephemeral venv
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m venv "$RUNNER_TEMP/nx300m-ubi-venv"
+          "$RUNNER_TEMP/nx300m-ubi-venv/bin/pip" \
+            install --disable-pip-version-check --no-input 'ubi-reader==0.8.16'
+          "$RUNNER_TEMP/nx300m-ubi-venv/bin/ubireader_extract_files" --help \
+            > /dev/null
+
+      - name: Download and verify both untrusted source archives in private runner temp
+        shell: bash
+        timeout-minutes: 10
+        run: |
+          set -euo pipefail
+          umask 077
+          dir="$RUNNER_TEMP/nx300m-static-firmware"
+          mkdir -m 700 -p "$dir"
+          python3 - <<'PY'
+          import os,sys
+          from pathlib import Path
+          sys.path.insert(0,'research')
+          from nx300m_unofficial_archive_acquire import fetch_one
+          from nx300m_slp_firmware_integrity import inspect
+          root=Path(os.environ['RUNNER_TEMP'])/'nx300m-static-firmware'
+          for v in ('1.14','1.15'):
+              found=fetch_one(v,root)
+              result=inspect(Path(found['path']),expected_version=v)
+              if result['model_from_binary']!='NX300M' or not result['all_jamcrc_ok']:
+                  raise SystemExit('REJECT firmware SLP content')
+              print(f'VERIFIED_OFFLINE_SOURCE=NX300M_{v}'
+                    f' ZIP_SHA256={found["download_sha256"]}')
+          PY
+
+      - name: Extract two platform UBI images and compare native ELF surfaces
+        shell: bash
+        timeout-minutes: 25
+        run: |
+          set -euo pipefail
+          umask 077
+          export PATH="$RUNNER_TEMP/nx300m-ubi-venv/bin:$PATH"
+          dir="$RUNNER_TEMP/nx300m-static-firmware"
+          python3 research/nx300m_fw114_native_elf_diff.py \
+            --private-dir "$dir" \
+            --fw114 "$dir/NX300M_FW_v1.14.zip" \
+            --fw115 "$dir/NX300M_FW_v1.15.zip" \
+            --summary "$GITHUB_STEP_SUMMARY" \
+            | tee "$RUNNER_TEMP/nx300m-native-diff-evidence.jsonl"
+          python3 - <<'PY'
+          import json,os
+          from pathlib import Path
+          p=Path(os.environ['RUNNER_TEMP'])/'nx300m-native-diff-evidence.jsonl'
+          prefix="NX300M_NATIVE_FW_DIFF_JSON "
+          matching=[json.loads(s[len(prefix):]) for s in
+                    p.read_text().splitlines() if s.startswith(prefix)]
+          if len(matching)!=1:raise SystemExit('REJECT: missing real native diff evidence')
+          report=matching[0]
+          if report['source_chain_of_custody_confirmed'] or report['camera_flash_permitted']:
+              raise SystemExit('REJECT false camera safety claim')
+          comp=report['comparison']
+          if comp['same_named_native_elf_count']<1:
+              raise SystemExit('REJECT no common camera ELF library')
+          if report['fw114']['internal_fw_version']!='1.14' or (
+              report['fw115']['internal_fw_version']!='1.15'
+          ):raise SystemExit('REJECT firmware mismatch')
+          print('PASS native ELF FW114/115 file-hash and sampled-symbol delta report')
+          PY
+
+      - name: Remove original firmware and offline extraction from runner
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f "$RUNNER_TEMP/nx300m-static-firmware/NX300M_FW_v1.14.zip" \
+                "$RUNNER_TEMP/nx300m-static-firmware/NX300M_FW_v1.15.zip"
+          echo 'Original ZIPs never committed or uploaded as GitHub artifacts.'

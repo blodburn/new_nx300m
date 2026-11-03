@@ -116,3 +116,94 @@ vendor-source verification, only a fact about internally valid mirror copies.
 The initial workflow labeled a self-computed download digest as if externally
 supplied. A follow-up change explicitly removed that label: the digest proves
 consistency among reads, **not independent trusted manufacturer provenance**.
+
+## Native FW1.14 UBI / ELF static comparison (2026-11-03)
+
+The two actual mirror archives were previously validated with the SLP v1
+five-image JAMCRC + pcache checks. Image 4, the **platform UBI** filesystem,
+was different between FW1.14 and FW1.15, even though both are the same size.
+This means **never transplant old 1.15 numerical ARM callsite offsets**.
+
+A new host-only pipeline `research/nx300m_fw114_native_elf_diff.py`:
+
+- Opens each existing private ZIP and validates the internal SLP model/version,
+  region CRC and SHA-256 before streaming only **platform.img** to mode-0600
+  ephemeral storage; never exposes the firmware as an upload/repository artifact.
+- Checks sampled UBI EC headers at eraseblock boundaries, PEB 131072 bytes,
+  VID offset 2048, data offset 4096, as documented for the Samsung NX family.
+- Calls pinned userspace `ubi-reader==0.8.16` **without mount, chroot, device,
+  root permissions or firmware code execution**; extracts to disposable temp.
+- Inspects ARM32 ELF files whose names match Capture/ISP/JPEG-related
+  libraries/app; reads dynamic symbols only via readelf and demangles symbols.
+- Compares byte hashes, lengths and same-named native dynamic-symbol values
+  across the two versions. A changed file or symbol is **negative evidence**
+  for reusing 1.15 offsets. It is NOT a complete verified 1.14 calling contract.
+- Synthetic tests include version mismatch, SLP CRC, NAND header geometry,
+  rejected symlink/writable output roots, ELF SHA/address difference and
+  conservative metadata-only ABI gates.
+
+Action: `.github/workflows/nx300m-fw114-native-elf-diff.yml`.
+Run artifact policy: **no Samsung firmware, ELF or generated derivative
+uploaded or committed**. Logs may contain short symbol/path/hash metadata.
+The source is an unofficial mirror and remains untrusted for authenticity.
+
+Real FW1.14 camera integration **remains NO-GO** until version-specific
+callsite/dependency, sensor Y/C data ownership, hardware RAM and full recovery
+are established independently.
+
+## REAL 1.14/1.15 UBI → camera ELF inspection, run 41603973944
+
+**Actual isolated CI passed**, from untrusted mirror archives, full disposable
+UBI/UBIFS extraction. Both had 2,465 128-KiB physical eraseblocks.
+Among **11 selected same-named ARM32 camera-related ELF files**, 10 were
+byte-for-byte equal. The different file was **`libsif.so`** (both 420,844 bytes):
+
+- `libmm-photo.so`: byte-identical SHA-256
+  `69bc5d912ceb8c762afb27b3b410a048c1606852846b89b3c70b16714697ecba`.
+- `libcapture-fw-slpcam-nx300.so`: byte-identical (4,791,660 bytes).
+- `libcapture-fw-plat.so`: byte-identical (35,648 bytes).
+- `libsif.so` v1.14 SHA-256:
+  `280472a65f6b301f1c6bf21f6c73e0cc0f17609fc193a2d9ba8bc75c30b3fe72`.
+- `libsif.so` v1.15 SHA-256:
+  `c50eb4448fc58fd8b24721dca30b15169bf95d28295c846eb0bc9cd9c32f6ff8`.
+
+Extracted actual dynamic-symbol evidence: `DscImage::SaveExifImage` is
+0x0005b9b4 in v1.14, versus 0x0005b8ac in v1.15 (**delta +0x108**).
+`DscImage::CopyExifInfo` is 0x00059900 versus 0x000597f8.
+`DscImage::GetExifImageInfo` is 0x00057320 versus 0x00057218.
+No firmware or ELF artifact was uploaded; sources are temporary runner data.
+
+**Next verification** (`nx300m_fw114_function_proofs.py`): compare exact
+function bytes by each file's own ARM PT_LOAD mapping for the JPEG parser,
+JpegEncode, EncodeYcc, EXIF and MakerNotes. Test the previous 1.15 exact
+JPEG SOF 4:2:2/4:2:0 ARM opcode signature against 1.14 independently.
+This verifies specific instructions only, not native runtime ABI, DMA
+ownership, camera RAM, or recovery. Installation remains **NO-GO**.
+
+## REAL FW1.14 native JPEG function-body comparison (run 41604709782)
+
+Static ARM32 PT_LOAD file-backed function-body SHA-256 comparisons from the
+same temporary, version-validated UBI/UBIFS files:
+
+| Native ELF + function | Version 1.14 address | Version 1.15 address | Code-body SHA equal |
+|---|---|---|---|
+| `libmm-photo.so` `CMmDeviceDriver::EncodeYcc(CYcc&, unsigned int)` | 0x00034b18 | 0x00034b18 | **YES** (644 bytes) |
+| `libsif.so` `DscJfifHal::Parse` | 0x00029084 | 0x00029084 | **NO** (1216 bytes) |
+| `libsif.so` `DscJfifHal::Encode` | 0x00029830 | 0x00029830 | **NO** (936 bytes) |
+| `libsif.so` `DscJfif::JpegEncode` | 0x00028a88 | 0x00028a88 | **NO** (456 bytes) |
+| `libsif.so` `DscImage::CopyExifInfo` | 0x00059900 | 0x000597f8 | **NO** (772 bytes) |
+| `libsif.so` `DscImage::GetExifImageInfo` | 0x00057320 | 0x00057218 | **NO** (192 bytes) |
+| `libsif.so` `DscImage::SaveExifImage` | 0x0005b9b4 | 0x0005b8ac | **NO** (1212 bytes) |
+
+The earlier FW1.15 JPG SOF sampling branch **exactly matched 12 of 12**
+old-reference ARM instruction words in actual mirror FW1.14 `libsif.so`,
+including 0x21 (4:2:2) and 0x22 (4:2:0) branches. **This is a local
+instruction observation, not evidence that JPEG function bodies are equal:
+they are not.** Do not reuse 1.15 function sizes/addresses/patches without
+version-specific proof and independently verified hardware recovery.
+
+**Completion gates still open**: trusted manufacturer-source identity,
+Picture Wizard + capture callback dynamic paths on actual FW1.14,
+full JPEG encoder/EXIF/MakerNotes compatibility, real live Y/C buffer
+shape and ownership, camera RAM and save latency, safe firmware roll-back
+and full-brick recovery. No real camera was accessed.
