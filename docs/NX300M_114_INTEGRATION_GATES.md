@@ -123,3 +123,33 @@ checks the separately GNU-cross-built ARM32 simulation binary.
 read-only runtime loader/ABI evidence from an already authorized shell,
 frame/plane ownership and chroma format, actual camera RAM and latency,
 MakerNotes/RAW parity, and a tested full-brick recovery method.
+
+## Measured actual FW1.14/1.15 ABI (isolated real-archive CI 41622267227)
+
+These are properties of **actual mirror-downloaded and SLP-verified** NX300M
+libraries, not observations from the user's physical camera. All data were
+read from private ephemeral extracted UBIFS files.
+
+| Native camera shared library | EABI | CPU tag | FP instruction tag | ELF float calling convention |
+|---|---|---|---|---|
+| `libcapture-fw-slpcam-nx300.so` | 5 | ARMv7 | VFPv2 | not declared by ELF flags or VFP-args attribute |
+| `libmm-photo.so` | 5 | ARMv7 | VFPv2 | not declared by ELF flags or VFP-args attribute |
+| `libsif.so` | 5 | ARMv7 | VFPv2 | not declared by ELF flags or VFP-args attribute |
+
+For all three, `e_flags=0x05000002`, and the known static ABI attributes,
+required SONAME names and ELF PT_INTERP metadata are identical between
+mirror FW1.14 and FW1.15. These are shared libraries, so PT_INTERP was
+absent. The exact procedure/camera-application loader and target ABI calling
+convention must be independently verified before linking a new module.
+
+**Original QEMU GNU test binary** (run 41622267537): ARM EABI5,
+`Tag_CPU_arch=v5T`, no declared VFP arch, ELF soft-float flag
+`e_flags=0x05000200`, program interpreter `/lib/ld-linux.so.3`,
+GNU libc6 and libm6 dependencies. This is NOT a verified Samsung Tizen
+target build.
+
+The next QEMU regression explicitly adds
+`-march=armv7-a -mfpu=vfpv2 -mfloat-abi=softfp` to build the same synthetic
+film-to-JPEG algorithm for the **observed ISA**. This is a closer CPU/FP
+instruction model, not proven Tizen loader compatibility. No manufacturer
+authenticity or physical-camera runtime behavior is established.
