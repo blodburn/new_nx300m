@@ -98,3 +98,28 @@ Next physical gates: manual verified stock 1.14 and safe restore/recovery;
 validated same-stage Y/C+RGB capture copies with proper consent; memory and
 hot-path latency measurement **on camera**; RAW/JPEG behavior with EXIF and
 MakerNotes. Until then, camera patch and flash remain NO-GO.
+
+## ARM EABI / floating-point calling convention and loader review
+
+Added `research/nx300m_fw114_arm_loader_abi.py` to examine the **actual
+private FW1.14/1.15 extracted** camera native `libsif.so`,
+`libmm-photo.so` and `libcapture-fw-slpcam-nx300.so` files.
+The tool reads ARM ELF32 EABI header flags, `readelf -A` CPU and VFP
+calling-convention attributes, `readelf -d` dependency SONAMEs and
+`readelf -l` executable interpreter, then compares static metadata.
+
+It independently measures the ARM32 GNU EABI QEMU test executable too.
+A matching EABI version is **not** proof that a GNU/Linux binary uses the
+camera's Tizen-era libc, dynamic loader, EFL, graphics, lens or native
+camera API. A `PT_INTERP` in a GNU/Linux test binary is only its own
+loader requirement. Camera plugin loadability is intentionally **false**
+in all machine-readable records. No binary is flashed or copied to camera.
+
+CI: `.github/workflows/nx300m-fw114-native-elf-diff.yml` compares actual
+camera ELF records; `.github/workflows/nx300m-arm32-passive-probe.yml`
+checks the separately GNU-cross-built ARM32 simulation binary.
+
+**Remaining device gates:** authentically attested installed FW1.14,
+read-only runtime loader/ABI evidence from an already authorized shell,
+frame/plane ownership and chroma format, actual camera RAM and latency,
+MakerNotes/RAW parity, and a tested full-brick recovery method.

@@ -25,6 +25,7 @@ import zipfile
 import nx300m_slp_firmware_integrity as slp
 import nx300m_fw114_function_proofs as focus
 import nx300m_fw114_capture_jpeg_route as static_route
+import nx300m_fw114_arm_loader_abi as arm_loader
 
 PEB = 131072
 VID = 2048
@@ -235,6 +236,9 @@ def inspected_candidates(root: Path) -> dict:
         if name in ("libsif.so", "libmm-photo.so"):
             results[name]["focused_function_proof"] = focus.inspect(
                 file, include_sampling=name=="libsif.so")
+        if name in ("libsif.so", "libmm-photo.so",
+                    "libcapture-fw-slpcam-nx300.so"):
+            results[name]["arm_loader_abi"] = arm_loader.inspect_elf(file)
     return results
 
 
@@ -274,6 +278,11 @@ def compare_inventory(a: dict, b: dict) -> dict:
                 "fw114": left[s], "fw115": right[s],
             } for s in common if left[s] != right[s]][:30],
         }
+        if "arm_loader_abi" in v and "arm_loader_abi" in w:
+            entry["fw114_arm_loader_abi"] = v["arm_loader_abi"]
+            entry["fw115_arm_loader_abi"] = w["arm_loader_abi"]
+            entry["static_arm_loader_abi_comparison"] = arm_loader.compare_abi(
+                v["arm_loader_abi"], w["arm_loader_abi"])
         if "focused_function_proof" in v and "focused_function_proof" in w:
             entry["focused_native_function_body_comparison"] = focus.compare(
                 v["focused_function_proof"], w["focused_function_proof"])
@@ -371,6 +380,21 @@ def main(argv: list[str] | None = None) -> int:
                     f.write(f'| {version} | {proof["capture_recipe_calls_verified"]}'
                             f' | {proof["photo_encodeycc_edges_verified"]}'
                             f' | {proof["photo_to_sif_encodeycc_link"]["photolib_plt_import_sif_export_mangled_equal"]} |\n')
+                f.write("\n### ARM EABI / float ABI / needed libs (read-only)\n")
+                f.write("| Native ELF | EABI | FW1.14 float | FW1.15 float | "
+                        "ABI differences |\n")
+                f.write("|---|---:|---|---|---|\n")
+                for x in compared["compared_native_elfs"]:
+                    if "static_arm_loader_abi_comparison" not in x:
+                        continue
+                    a,b=x["fw114_arm_loader_abi"],x["fw115_arm_loader_abi"]
+                    diff=x["static_arm_loader_abi_comparison"]
+                    f.write(f'| {x["library"]} | {a["eabi"]}'
+                            f' | {a["float_abi_eflags"]}/{a["float_abi_attributes"]}'
+                            f' | {b["float_abi_eflags"]}/{b["float_abi_attributes"]}'
+                            f' | {",".join(diff["different_static_abi_fields"]) or "none"} |\n')
+                f.write("\nGNU/Linux ARM EABI test binary's glibc and PT_INTERP "
+                        "do not establish NX300M Tizen runtime compatibility.\n")
                 f.write("\nNo live callback, DMA/YCC ownership, MakerNotes, "
                         "recovery or camera flash proof.\n")
                 f.write("\n**Physical NX300M integration still NO-GO.**\n")

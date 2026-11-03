@@ -8,6 +8,8 @@ on:
       - "research/nx300m_host420_lutgrid_jpeg.h"
       - "research/test_nx300m_host420_lutgrid_jpeg.c"
       - "research/nx300m_fw114_runtime_metadata_gate.py"
+      - "research/nx300m_fw114_arm_loader_abi.py"
+      - "research/test_nx300m_fw114_arm_loader_abi.py"
       - "research/test_nx300m_fw114_runtime_metadata_gate.py"
       - "scripts/nx300m_fw114_runtime_metadata_probe.sh"
   pull_request:
@@ -17,6 +19,8 @@ on:
       - "research/nx300m_host420_lutgrid_jpeg.h"
       - "research/test_nx300m_host420_lutgrid_jpeg.c"
       - "research/nx300m_fw114_runtime_metadata_gate.py"
+      - "research/nx300m_fw114_arm_loader_abi.py"
+      - "research/test_nx300m_fw114_arm_loader_abi.py"
       - "research/test_nx300m_fw114_runtime_metadata_gate.py"
       - "scripts/nx300m_fw114_runtime_metadata_probe.sh"
   workflow_dispatch:
@@ -37,6 +41,7 @@ jobs:
           set -euo pipefail
           sh -n scripts/nx300m_fw114_runtime_metadata_probe.sh
           python3 research/test_nx300m_fw114_runtime_metadata_gate.py
+          python3 research/test_nx300m_fw114_arm_loader_abi.py
 
       - name: Install GNU ARM32 cross compiler and QEMU userspace
         shell: bash
@@ -71,6 +76,22 @@ jobs:
             .build/nx300m_arm32_copyonly_lut65_jpeg_test \
             | tee "$RUNNER_TEMP/arm32_synthetic_parity.log"
           grep -q 'PASS 8 Y/C420' "$RUNNER_TEMP/arm32_synthetic_parity.log"
+          python3 research/nx300m_fw114_arm_loader_abi.py             --elf .build/nx300m_arm32_copyonly_lut65_jpeg_test             | tee "$RUNNER_TEMP/arm32_gnu_abi.jsonl"
+          python3 - <<'PY'
+          import json,os
+          from pathlib import Path
+          text=(Path(os.environ["RUNNER_TEMP"])/"arm32_gnu_abi.jsonl").read_text()
+          line=next((s for s in text.splitlines()
+                     if s.startswith("NX300M_ARM_ABI_JSON ")),None)
+          if line is None:raise SystemExit("REJECT missing ARM32 test ABI data")
+          data=json.loads(line[len("NX300M_ARM_ABI_JSON "):])["input"]
+          if not data["arm32_eabi5_little_endian"] or data["eabi"]!=5 or (
+              data["physical_nx300m_camera_loadability_verified"]
+          ):
+              raise SystemExit("REJECT bad ARM32 ABI safety flags")
+          print("ARM32_GNU_FLOAT_ABI",data["float_abi_eflags"])
+          print("ARM32_GNU_LOADER",data["program_interpreter"])
+          PY
           printf '%s\n' \
             'ARM32 GCC EABI + Linux glibc QEMU PASS, no physical camera or Tizen ABI claim' \
             >> "$GITHUB_STEP_SUMMARY"
