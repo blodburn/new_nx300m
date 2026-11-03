@@ -207,3 +207,42 @@ https://github.com/blodburn/new_nx300m/actions/runs/41634023171
 
 This evidence is from an **unofficial firmware mirror** with internal
 SLP checksums but no independently authenticated Samsung signature.
+
+## ARMv7/VFPv2 freestanding film LUT kernel (2026-11-04)
+
+The previous whole Y/C420 + LUT65 + JPEG executable required GLIBC_2.34,
+while mirror-source NX300M FW1.14 firmware libc exported at most
+GLIBC_2.13. The **whole executable cannot be copied to the camera**.
+
+This change implements a real native CPU **RGB12 LUT interpolation kernel**
+in research/nx300m_freestanding_lut_core.c. The function
+nx_film_core_apply_rgb12 accepts caller-owned LUT nodes, grid size, RGB12
+source and destination, and node count. It uses integer arithmetic only,
+allocates no memory, preserves the source, supports in-place processing,
+and rejects invalid pointers, grid sizes and insufficient LUT nodes without
+changing destination pixels.
+
+The ARMv7/VFPv2 shared object is linked with -nostdlib, -nostartfiles,
+-nodefaultlibs and -Wl,--no-undefined. CI MUST verify:
+
+- EABI5, ARMv7, VFPv2, ET_DYN, **no PT_INTERP**.
+- Zero NEEDED shared libraries and zero unresolved named global symbols.
+- Zero GLIBC symbol version requirements; only the documented exported
+  nx_film_core_apply_rgb12 symbol.
+- dlopen and exact pixel results versus the existing host
+  nx_lut_grid_host_apply for all grid sizes 2, 18 and 65, with 768
+  randomized RGB12 pixels per grid and boundary/in-place/invalid cases.
+  The harness uses modern GNU libc **only for testing** in QEMU.
+
+This implementation avoids the **GLIBC_2.34 dependency inside the arithmetic
+LUT kernel only**. It does **NOT** make the complete JPEG pipeline,
+Tizen/Elementary menu, camera capture callbacks, ISP buffer, or full
+Film Simulator work on camera. It is not a drop-in Samsung module; Tizen
+dynamic loader version, entrypoint linking, CPU memory budget, proprietary
+EXIF/MakerNotes, physical rollback and actual firmware recovery are not
+verified. No firmware installation, USB remote shell, automatic boot hook,
+camera patch or flash occurs here.
+
+The 2.2 MB 65-grid LUT must still be provided/owned by an actual
+proven-safe target caller, which is not implemented. The testing module
+does not contain proprietary film LUT contents or a camera image.
