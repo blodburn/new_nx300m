@@ -23,6 +23,7 @@ import tempfile
 import zipfile
 
 import nx300m_slp_firmware_integrity as slp
+import nx300m_fw114_function_proofs as focus
 
 PEB = 131072
 VID = 2048
@@ -230,6 +231,9 @@ def inspected_candidates(root: Path) -> dict:
             "native_symbol_samples": symbols,
             "sample_count": len(symbols),
         }
+        if name in ("libsif.so", "libmm-photo.so"):
+            results[name]["focused_function_proof"] = focus.inspect(
+                file, include_sampling=name=="libsif.so")
     return results
 
 
@@ -243,7 +247,7 @@ def compare_inventory(a: dict, b: dict) -> dict:
         right = {(s["symbol"], s["imported"]): s["value"]
                  for s in w["native_symbol_samples"]}
         common = sorted(set(left) & set(right))
-        by_file.append({
+        entry = {
             "library": name, "fw114_sha256": v["sha256"],
             "fw115_sha256": w["sha256"],
             "file_identical": v["sha256"] == w["sha256"],
@@ -253,7 +257,21 @@ def compare_inventory(a: dict, b: dict) -> dict:
                 "symbol": s[0], "imported": s[1],
                 "fw114": left[s], "fw115": right[s],
             } for s in common if left[s] != right[s]][:30],
-        })
+        }
+        if "focused_function_proof" in v and "focused_function_proof" in w:
+            entry["focused_native_function_body_comparison"] = focus.compare(
+                v["focused_function_proof"], w["focused_function_proof"])
+            if name == "libsif.so":
+                entry["firmware114_old_115_sof_opcode_signature"] = {
+                    "matches": v["focused_function_proof"][
+                        "old_115_jpeg_sof_static_signature_all_match"],
+                    "compared_opcode_words": v["focused_function_proof"][
+                        "old_115_jpeg_sof_signature_points"],
+                    "fw115_reference_matches": w["focused_function_proof"][
+                        "old_115_jpeg_sof_static_signature_all_match"],
+                    "camera_input_abi_verified": False,
+                }
+        by_file.append(entry)
     if not names:
         raise ValueError("No matching camera ELF basenames in the two images")
     return {

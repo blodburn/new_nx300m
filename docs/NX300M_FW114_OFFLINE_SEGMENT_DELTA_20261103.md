@@ -150,3 +150,32 @@ The source is an unofficial mirror and remains untrusted for authenticity.
 Real FW1.14 camera integration **remains NO-GO** until version-specific
 callsite/dependency, sensor Y/C data ownership, hardware RAM and full recovery
 are established independently.
+
+## REAL 1.14/1.15 UBI → camera ELF inspection, run 41603973944
+
+**Actual isolated CI passed**, from untrusted mirror archives, full disposable
+UBI/UBIFS extraction. Both had 2,465 128-KiB physical eraseblocks.
+Among **11 selected same-named ARM32 camera-related ELF files**, 10 were
+byte-for-byte equal. The different file was **`libsif.so`** (both 420,844 bytes):
+
+- `libmm-photo.so`: byte-identical SHA-256
+  `69bc5d912ceb8c762afb27b3b410a048c1606852846b89b3c70b16714697ecba`.
+- `libcapture-fw-slpcam-nx300.so`: byte-identical (4,791,660 bytes).
+- `libcapture-fw-plat.so`: byte-identical (35,648 bytes).
+- `libsif.so` v1.14 SHA-256:
+  `280472a65f6b301f1c6bf21f6c73e0cc0f17609fc193a2d9ba8bc75c30b3fe72`.
+- `libsif.so` v1.15 SHA-256:
+  `c50eb4448fc58fd8b24721dca30b15169bf95d28295c846eb0bc9cd9c32f6ff8`.
+
+Extracted actual dynamic-symbol evidence: `DscImage::SaveExifImage` is
+0x0005b9b4 in v1.14, versus 0x0005b8ac in v1.15 (**delta +0x108**).
+`DscImage::CopyExifInfo` is 0x00059900 versus 0x000597f8.
+`DscImage::GetExifImageInfo` is 0x00057320 versus 0x00057218.
+No firmware or ELF artifact was uploaded; sources are temporary runner data.
+
+**Next verification** (`nx300m_fw114_function_proofs.py`): compare exact
+function bytes by each file's own ARM PT_LOAD mapping for the JPEG parser,
+JpegEncode, EncodeYcc, EXIF and MakerNotes. Test the previous 1.15 exact
+JPEG SOF 4:2:2/4:2:0 ARM opcode signature against 1.14 independently.
+This verifies specific instructions only, not native runtime ABI, DMA
+ownership, camera RAM, or recovery. Installation remains **NO-GO**.

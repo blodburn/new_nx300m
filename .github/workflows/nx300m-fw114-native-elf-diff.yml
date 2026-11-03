@@ -5,6 +5,8 @@ on:
     paths:
       - '.github/workflows/nx300m-fw114-native-elf-diff.yml'
       - 'research/nx300m_fw114_native_elf_diff.py'
+      - 'research/nx300m_fw114_function_proofs.py'
+      - 'research/test_nx300m_fw114_function_proofs.py'
       - 'research/test_nx300m_fw114_native_elf_diff.py'
       - 'research/nx300m_unofficial_archive_acquire.py'
       - 'research/nx300m_slp_firmware_integrity.py'
@@ -12,6 +14,8 @@ on:
     paths:
       - '.github/workflows/nx300m-fw114-native-elf-diff.yml'
       - 'research/nx300m_fw114_native_elf_diff.py'
+      - 'research/nx300m_fw114_function_proofs.py'
+      - 'research/test_nx300m_fw114_function_proofs.py'
       - 'research/test_nx300m_fw114_native_elf_diff.py'
       - 'research/nx300m_unofficial_archive_acquire.py'
       - 'research/nx300m_slp_firmware_integrity.py'
@@ -33,6 +37,7 @@ jobs:
         run: |
           set -euo pipefail
           python3 research/test_nx300m_fw114_native_elf_diff.py
+          python3 research/test_nx300m_fw114_function_proofs.py
           python3 research/test_nx300m_fw114_binary_delta.py
 
       - name: Install pinned offline UBI reader in ephemeral venv
