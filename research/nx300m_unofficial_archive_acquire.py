@@ -121,16 +121,18 @@ def acquire_and_inspect(folder: Path, *, fetcher=fetch_one) -> dict:
     target = slp.inspect(Path(a["path"]), expected_version="1.14")
     b = fetcher("1.15", folder)
     reference = slp.inspect(Path(b["path"]), expected_version="1.15")
-    comparison = delta.compare(
-        Path(a["path"]), Path(b["path"]),
-        expected_fw114_sha256=a["download_sha256"],
-        expected_fw115_sha256=b["download_sha256"],
-    )
+    # Do NOT pass a self-computed download hash as an *external* trusted
+    # fingerprint. Only assert consistency of independent local reads.
+    # A vendor-signed external SHA-256 is not presently available.
+    comparison = delta.compare(Path(a["path"]), Path(b["path"]))
     if target["archive_sha256"] != a["download_sha256"] or (
         reference["archive_sha256"] != b["download_sha256"]
+    ) or comparison["target"]["source_sha256"] != a["download_sha256"] or (
+        comparison["reference"]["source_sha256"] != b["download_sha256"]
     ):
         raise ValueError("Downloaded archive changed during analysis")
     comparison["source_class"] = "UNOFFICIAL_MIRROR_UNAUTHENTICATED"
+    comparison["download_sha256_matches_recheck"] = True
     comparison["manufacturer_binary_identity_proven"] = False
     comparison["on_camera_validated"] = False
     comparison["archive_url_fw114"] = a["source_url"]

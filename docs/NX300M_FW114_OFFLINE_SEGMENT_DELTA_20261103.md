@@ -83,3 +83,36 @@ unofficial mirror blocks download, the workflow **fails** rather than
 fabricating a successful real-firmware comparison.
 
 **Camera firmware installation and native ABI assumptions remain NO-GO.**
+
+## ACTUAL retrieved mirror-archive 1.14 vs 1.15 comparison (2026-11-03)
+
+Source: isolated CI [run 41587787130](https://github.com/blodburn/new_nx300m/actions/runs/41587787130).
+**Files were really downloaded, checked and removed, NOT committed.**
+
+| Source | 1.14 | 1.15 |
+|---|---|---|
+| ZIP bytes | 245,027,217 | 245,016,220 |
+| ZIP SHA-256 | `dccb51ae1497b95123eb9f35035d90e53ab793b3d98a535747d1d3653c89cf05` | `ccd3b357f85b4d50b583ba874504dd896f4fff1d5d1b41e7384ac78f2a4e2df0` |
+| Decoded BIN bytes | 331,140,312 | 331,140,200 |
+| BIN SHA-256 | `173865f6da4e062b7293031eb0c49f983b9cd73b59fce3afa30787045db6cba4` | `75ededdc1e191ea3cdf8fb1201faced001d47b164224601a21150f75f8f7922f` |
+| Internal header | NX300M, 1.14 | NX300M, 1.15 |
+| 5 image JAMCRC + pcache | PASS | PASS |
+
+| SLP section | 1.14 bytes | 1.15 bytes | SHA-256 comparison |
+|---|---:|---:|---|
+| Image 0 (vImage, SLP convention) | 5,193,616 | 5,193,616 | Identical |
+| Image 1 (D4_IPL, SLP convention) | 7,652 | 7,652 | Identical |
+| Image 2 (D4_PNLBL, SLP convention) | 63,580 | 63,580 | Identical |
+| Image 3 (uImage, SLP convention) | 2,745,960 | 2,745,848 | **Different** |
+| Image 4 (platform.img, SLP convention) | 323,092,480 | 323,092,480 | **Different** |
+| pcache | 36,864 | 36,864 | **Different** |
+
+The changed uImage and platform image make FW1.15 native offsets,
+ISR/ISP assumptions and JPEG hook ABI **NON-PORTABLE by default**.
+Only version-specific ELF/static analysis and same-stage read-only camera
+captures could establish a 1.14 contract. This is not a signed Samsung
+vendor-source verification, only a fact about internally valid mirror copies.
+
+The initial workflow labeled a self-computed download digest as if externally
+supplied. A follow-up change explicitly removed that label: the digest proves
+consistency among reads, **not independent trusted manufacturer provenance**.
