@@ -97,7 +97,7 @@ class MetadataGateTests(unittest.TestCase):
         }))["mem_total_kib"],"unknown")
         with self.assertRaisesRegex(ValueError,"memory"):
             gate.inspect_text(sample({"mem_available_kib":"999999"}))
-        with self.assertRaisesRegex(ValueError,"memory"):
+        with self.assertRaisesRegex(ValueError,"syntax"):
             gate.inspect_text(sample({"mem_total_kib":"-1"}))
 
     def test_injection_multiline_and_unicode_rejected(self):
