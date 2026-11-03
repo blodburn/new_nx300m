@@ -57,6 +57,7 @@ jobs:
             -std=c11 -O2 -Wall -Wextra -Werror -Iresearch \
             research/test_nx300m_host420_lutgrid_jpeg.c \
             research/nx300m_host420_lutgrid_jpeg.c \
+            research/nx300m_host_lutgrid_jpeg.c \
             research/nx300m_ycc420_multimodel_probe.c \
             research/nx300m_lut_grid_host.c \
             research/nx300m_preview_rgb.c \
