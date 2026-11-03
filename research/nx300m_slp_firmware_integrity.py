@@ -132,19 +132,22 @@ def validate_stream(reader, declared_length: int, *, expected_version: str) -> d
         evidence["version_from_binary"] == expected_version)
     if not evidence["version_matches_expected"]:
         raise ValueError("Internal SLP version does not match required version")
-    def segment_hash(length: int, claim_hex: str) -> tuple[str, bool]:
+    def segment_hash(length: int, claim_hex: str) -> tuple[str, bool, str]:
         remaining = length
         accumulator = 0
+        sha256 = hashlib.sha256()
         while remaining:
             piece = read_exact(min(remaining, CHUNK))
             accumulator = zlib.crc32(piece, accumulator)
+            sha256.update(piece)
             remaining -= len(piece)
         value = (accumulator ^ 0xffffffff) & 0xffffffff
         actual = f"{value:08x}"
-        return actual, actual == claim_hex
+        return actual, actual == claim_hex, sha256.hexdigest()
     for segment in evidence["segments"]:
-        value, ok = segment_hash(segment["length"], segment["claimed_jamcrc"])
+        value, ok, segment_sha = segment_hash(segment["length"], segment["claimed_jamcrc"])
         segment["computed_jamcrc"] = value
+        segment["sha256"] = segment_sha
         segment["jamcrc_ok"] = ok
         if not ok:
             raise ValueError(f"SLP image {segment['index']} JAMCRC mismatch")
@@ -159,8 +162,9 @@ def validate_stream(reader, declared_length: int, *, expected_version: str) -> d
         "claimed_jamcrc": f"{crc:08x}",
         "magic": f"{magic:08x}",
     }
-    actual, ok = segment_hash(size, pcache["claimed_jamcrc"])
+    actual, ok, pcache_sha = segment_hash(size, pcache["claimed_jamcrc"])
     pcache["computed_jamcrc"] = actual
+    pcache["sha256"] = pcache_sha
     pcache["jamcrc_ok"] = ok
     if not ok:
         raise ValueError("pcache JAMCRC mismatch")

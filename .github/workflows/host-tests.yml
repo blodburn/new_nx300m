@@ -7,5 +7,5 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Test 24 C suites + 14 LUT bridge + 6 real-profile report + 2 grid diagnostic + 155 prior Python cases
+      - name: Test 24 C suites + SLP 1.14/1.15 binary delta + all Python checks
         run: make test
