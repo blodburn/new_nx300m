@@ -153,3 +153,57 @@ The next QEMU regression explicitly adds
 film-to-JPEG algorithm for the **observed ISA**. This is a closer CPU/FP
 instruction model, not proven Tizen loader compatibility. No manufacturer
 authenticity or physical-camera runtime behavior is established.
+
+## Actual FW1.14 C runtime / dynamic linker and GNU executable contrast
+
+Tool: research/nx300m_fw114_runtime_linkage_audit.py.
+It analyzes actual mirrored, internally SLP-verified FW1.14 and FW1.15
+platform.img -> UBIFS contents **without executing target ELF files**.
+From the private firmware filesystem, locate libc.so.6, libm.so.6,
+libpthread.so.0, libstdc++.so.6, ld-linux.so.3 and/or
+ld-linux-armhf.so.3. Follow only symlinks resolving *inside* extracted
+root; record readelf metadata and SHA-256 without exporting binary files.
+Inspect three source-proved camera libraries' NEEDED names and optional
+di-camera-app PT_INTERP static property.
+
+GLIBC versions *defined* by target libc are distinct from GLIBC versions
+*required* by a GNU-built executable. The CI records both; an ARM EABI5
+match does not guarantee a compatible loader or C runtime.
+
+Static library file presence does NOT prove full dependency closure,
+symbol-by-symbol linking or safe on-camera execution. No live camera,
+firmware writes, RAM reads, proprietary binary uploads or full-brick
+recovery were attempted. **Firmware installation remains NO-GO.**
+
+## Actual source-backed GLIBC compatibility blocker (2026-11-03)
+
+GitHub Actions **real extracted FW1.14/1.15 UBIFS** result:
+https://github.com/blodburn/new_nx300m/actions/runs/41634023305
+
+- Firmware 1.14 app di-camera-app: static interpreter /lib/ld-linux.so.3.
+- Firmware 1.14 libc.so.6: maximum defined version tag **GLIBC_2.13**.
+- Firmware 1.15 libc.so.6: maximum defined version tag **GLIBC_2.13**.
+- The 1.14/1.15 libc, ld-linux.so.3, libm, libpthread and libstdc++
+  source ELF copies were byte-identical in this offline comparison.
+- ld-linux-armhf.so.3 was not found in the selected extracted runtime.
+- The camera application's observed dependencies include
+  libappcore-efl.so.1, libelementary.so.1, libevas.so.1, libmm-photo.so,
+  libc.so.6, libstdc++.so.6 and many Samsung-specific libraries.
+
+GitHub Actions **actual ARMv7 VFPv2 GNU test executable** result:
+https://github.com/blodburn/new_nx300m/actions/runs/41634023171
+
+- Executable dynamic linker path: /lib/ld-linux.so.3.
+- Executable's maximum required version tag: **GLIBC_2.34**.
+- Target CPU/FP tags ARMv7 and VFPv2 matched static firmware metadata.
+- However, **GLIBC_2.34 is not available in the actual extracted
+  stock-candidate 1.14 libc**, whose maximum is GLIBC_2.13.
+- Therefore the existing GNU QEMU executable cannot be used as-is
+  against the firmware libc. Matching the loader filename and ARM EABI5
+  are insufficient. Compilation against a verified *older target libc
+  and camera userland* is necessary before any physical experiment.
+- No direct camera loading, correct Samsung native ABI, ISP buffer
+  access, original MakerNotes, secure recovery or flash has been proven.
+
+This evidence is from an **unofficial firmware mirror** with internal
+SLP checksums but no independently authenticated Samsung signature.

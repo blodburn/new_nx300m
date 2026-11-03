@@ -9,6 +9,8 @@ on:
       - "research/test_nx300m_host420_lutgrid_jpeg.c"
       - "research/nx300m_fw114_runtime_metadata_gate.py"
       - "research/nx300m_fw114_arm_loader_abi.py"
+      - "research/nx300m_fw114_runtime_linkage_audit.py"
+      - "research/test_nx300m_fw114_runtime_linkage_audit.py"
       - "research/test_nx300m_fw114_arm_loader_abi.py"
       - "research/test_nx300m_fw114_runtime_metadata_gate.py"
       - "scripts/nx300m_fw114_runtime_metadata_probe.sh"
@@ -20,6 +22,8 @@ on:
       - "research/test_nx300m_host420_lutgrid_jpeg.c"
       - "research/nx300m_fw114_runtime_metadata_gate.py"
       - "research/nx300m_fw114_arm_loader_abi.py"
+      - "research/nx300m_fw114_runtime_linkage_audit.py"
+      - "research/test_nx300m_fw114_runtime_linkage_audit.py"
       - "research/test_nx300m_fw114_arm_loader_abi.py"
       - "research/test_nx300m_fw114_runtime_metadata_gate.py"
       - "scripts/nx300m_fw114_runtime_metadata_probe.sh"
@@ -42,6 +46,7 @@ jobs:
           sh -n scripts/nx300m_fw114_runtime_metadata_probe.sh
           python3 research/test_nx300m_fw114_runtime_metadata_gate.py
           python3 research/test_nx300m_fw114_arm_loader_abi.py
+          python3 research/test_nx300m_fw114_runtime_linkage_audit.py
 
       - name: Install GNU ARM32 cross compiler and QEMU userspace
         shell: bash
@@ -134,6 +139,15 @@ jobs:
               raise SystemExit("REJECT: compiler output does not target FW114 CPU/VFP")
           if record["physical_nx300m_camera_loadability_verified"]:
               raise SystemExit("REJECT: false on-camera claim")
+          import sys
+          sys.path.insert(0,"research")
+          from nx300m_fw114_runtime_linkage_audit import inspect_versions
+          local=inspect_versions(
+              Path(".build/nx300m_armv7_vfpv2_copyonly_lut65_test"))
+          required=local["max_required_glibc_tag"]
+          if not required:
+              raise SystemExit("REJECT missing GNU runtime version requirement")
+          print("ARMv7_GNU_REQUIRED_GLIBC_MAX",required)
           print("PASS ARMv7 VFPv2 GNU EABI QEMU JPEG parity with target ISA")
           print("TARGET_ABI",record["float_abi_eflags"],
                 record["float_abi_attributes"],

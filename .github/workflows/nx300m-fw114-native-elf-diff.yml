@@ -6,6 +6,8 @@ on:
       - '.github/workflows/nx300m-fw114-native-elf-diff.yml'
       - 'research/nx300m_fw114_native_elf_diff.py'
       - 'research/nx300m_fw114_arm_loader_abi.py'
+      - 'research/nx300m_fw114_runtime_linkage_audit.py'
+      - 'research/test_nx300m_fw114_runtime_linkage_audit.py'
       - 'research/test_nx300m_fw114_arm_loader_abi.py'
       - 'research/nx300m_fw114_function_proofs.py'
       - 'research/nx300m_fw114_capture_jpeg_route.py'
@@ -19,6 +21,8 @@ on:
       - '.github/workflows/nx300m-fw114-native-elf-diff.yml'
       - 'research/nx300m_fw114_native_elf_diff.py'
       - 'research/nx300m_fw114_arm_loader_abi.py'
+      - 'research/nx300m_fw114_runtime_linkage_audit.py'
+      - 'research/test_nx300m_fw114_runtime_linkage_audit.py'
       - 'research/test_nx300m_fw114_arm_loader_abi.py'
       - 'research/nx300m_fw114_function_proofs.py'
       - 'research/nx300m_fw114_capture_jpeg_route.py'
@@ -46,6 +50,7 @@ jobs:
           set -euo pipefail
           python3 research/test_nx300m_fw114_native_elf_diff.py
           python3 research/test_nx300m_fw114_arm_loader_abi.py
+          python3 research/test_nx300m_fw114_runtime_linkage_audit.py
           python3 research/test_nx300m_fw114_function_proofs.py
           python3 research/test_nx300m_fw114_capture_jpeg_route.py
           python3 research/test_nx300m_fw114_binary_delta.py
@@ -158,6 +163,20 @@ jobs:
               print("NX300M_ACTUAL_ARM_ABI",name,
                     "1.14",a["float_abi_eflags"],a["float_abi_attributes"],
                     "1.15",b["float_abi_eflags"],b["float_abi_attributes"])
+          runtime=report["runtime_loader_libc_static_comparison"]
+          if runtime["gnu_linux_cross_compiler_binary_loadable_on_camera"] or (
+              runtime["firmware_flash_permitted"]
+          ):
+              raise SystemExit("REJECT false on-camera loadability claim")
+          print("FW114_TARGET_STATIC_GLIBC_MAX",
+                runtime["fw114_static_max_defined_glibc"] or "unavailable")
+          print("FW115_TARGET_STATIC_GLIBC_MAX",
+                runtime["fw115_static_max_defined_glibc"] or "unavailable")
+          print("FW114_TARGET_CAMERA_APP_PT_INTERP",
+                runtime["fw114_di_camera_app_interp"] or "unavailable")
+          for x in runtime["static_libc_and_loader_file_deltas"]:
+              print("FW114_TARGET_LIBC_LOADER_FILE",x["name"],
+                    "present",x["both_present"],"hash_match",x["sha256_equal"])
           print("PASS SIF EncodeYCC binding witness; camera ABI still NO-GO")
           print('PASS native ELF FW114/115 file-hash and sampled-symbol delta report')
           PY

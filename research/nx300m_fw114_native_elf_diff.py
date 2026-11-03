@@ -26,6 +26,7 @@ import nx300m_slp_firmware_integrity as slp
 import nx300m_fw114_function_proofs as focus
 import nx300m_fw114_capture_jpeg_route as static_route
 import nx300m_fw114_arm_loader_abi as arm_loader
+import nx300m_fw114_runtime_linkage_audit as runtime_linkage
 
 PEB = 131072
 VID = 2048
@@ -327,10 +328,14 @@ def analyze(archives: dict[str, Path], private_root: Path,
             root = private / ("root_" + version.replace(".", ""))
             run_reader(reader, platform, root)
             s["native_elfs"] = inspected_candidates(root)
+            s["offline_runtime_linkage"] = runtime_linkage.audit(root)
             route_paths[version] = select_route_elves(root)
             inventories[version] = s["native_elfs"]
             evidence[version] = s
         result = compare_inventory(inventories["1.14"], inventories["1.15"])
+        runtime_delta = runtime_linkage.compare_report_114_115(
+            evidence["1.14"]["offline_runtime_linkage"],
+            evidence["1.15"]["offline_runtime_linkage"])
         route = static_route.compare_versions(
             route_paths["1.14"],route_paths["1.15"],inventories)
         return {
@@ -339,6 +344,7 @@ def analyze(archives: dict[str, Path], private_root: Path,
             "fw114": evidence["1.14"],
             "fw115": evidence["1.15"],
             "comparison": result,
+            "runtime_loader_libc_static_comparison":runtime_delta,
             "capture_to_jpeg_static_route": route,
             "camera_flash_permitted": False,
             "camera_isp_buffer_contract_verified": False,
@@ -395,6 +401,19 @@ def main(argv: list[str] | None = None) -> int:
                             f' | {",".join(diff["different_static_abi_fields"]) or "none"} |\n')
                 f.write("\nGNU/Linux ARM EABI test binary's glibc and PT_INTERP "
                         "do not establish NX300M Tizen runtime compatibility.\n")
+                runtime_info = r["runtime_loader_libc_static_comparison"]
+                f.write("\n### FW1.14 target dynamic loader / libc evidence\n")
+                f.write("| Runtime ELF name | Both present | Exact SHA match | "
+                        "FW1.14 max defined GLIBC | FW1.15 max defined GLIBC |\n")
+                f.write("|---|---|---|---|---|\n")
+                for x in runtime_info["static_libc_and_loader_file_deltas"]:
+                    f.write(f'| {x["name"]} | {x["both_present"]} | '
+                            f'{x["sha256_equal"]} | '
+                            f'{x["fw114_max_glibc_tag"] or "not recorded"} | '
+                            f'{x["fw115_max_glibc_tag"] or "not recorded"} |\n')
+                f.write("\nFW1.14 camera application static PT_INTERP: "
+                        f'{runtime_info["fw114_di_camera_app_interp"] or "not discovered"}\n')
+                f.write("GNU test loader/GLIBC compatibility is NOT verified.\n")
                 f.write("\nNo live callback, DMA/YCC ownership, MakerNotes, "
                         "recovery or camera flash proof.\n")
                 f.write("\n**Physical NX300M integration still NO-GO.**\n")
