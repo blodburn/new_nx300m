@@ -207,3 +207,26 @@ Picture Wizard + capture callback dynamic paths on actual FW1.14,
 full JPEG encoder/EXIF/MakerNotes compatibility, real live Y/C buffer
 shape and ownership, camera RAM and save latency, safe firmware roll-back
 and full-brick recovery. No real camera was accessed.
+
+## Real FW1.14 capture → JPEG/EXIF static PLT proof (2026-11-03)
+
+The purpose of `nx300m_fw114_capture_jpeg_route.py` is to go beyond
+identical file hashes and inspect **every old-research static callsite**
+against real, separately identified 1.14 and 1.15 camera ELF code.
+It requires the actual capture framework and `libmm-photo.so` be exactly
+byte-identical between source versions *before* considering those known
+addresses. It then independently rechecks both versions with decoded ARM
+BL/PLT/GOT, 9 still recipe/mode-7 setter/getter witnesses and 8
+`CMmDeviceDriver::EncodeYcc(CYcc&, unsigned int)` getter/encoder edges,
+plus the same-version SIF `DscImage::EncodeYCC` dynamic export.
+
+This is a **static cross-ELF link witness**, not proof that the shutter
+callback really uses that branch at runtime, that the Y/C420 layout is
+known or that processed pixels reach the native JPEG encoder. The SIF
+firmware images differ in actual JPEG/EXIF function bodies and therefore
+live EXIF/MakerNotes compatibility remains an unclosed gate.
+
+Actual CI: `.github/workflows/nx300m-fw114-native-elf-diff.yml`
+records the route only when all native callsite and dynsym evidence passes.
+The source remains an unofficial mirrored research copy and does not
+establish Samsung-origin authenticity. No real camera access or flashing.

@@ -6,6 +6,8 @@ on:
       - '.github/workflows/nx300m-fw114-native-elf-diff.yml'
       - 'research/nx300m_fw114_native_elf_diff.py'
       - 'research/nx300m_fw114_function_proofs.py'
+      - 'research/nx300m_fw114_capture_jpeg_route.py'
+      - 'research/test_nx300m_fw114_capture_jpeg_route.py'
       - 'research/test_nx300m_fw114_function_proofs.py'
       - 'research/test_nx300m_fw114_native_elf_diff.py'
       - 'research/nx300m_unofficial_archive_acquire.py'
@@ -15,6 +17,8 @@ on:
       - '.github/workflows/nx300m-fw114-native-elf-diff.yml'
       - 'research/nx300m_fw114_native_elf_diff.py'
       - 'research/nx300m_fw114_function_proofs.py'
+      - 'research/nx300m_fw114_capture_jpeg_route.py'
+      - 'research/test_nx300m_fw114_capture_jpeg_route.py'
       - 'research/test_nx300m_fw114_function_proofs.py'
       - 'research/test_nx300m_fw114_native_elf_diff.py'
       - 'research/nx300m_unofficial_archive_acquire.py'
@@ -38,6 +42,7 @@ jobs:
           set -euo pipefail
           python3 research/test_nx300m_fw114_native_elf_diff.py
           python3 research/test_nx300m_fw114_function_proofs.py
+          python3 research/test_nx300m_fw114_capture_jpeg_route.py
           python3 research/test_nx300m_fw114_binary_delta.py
 
       - name: Install pinned offline UBI reader in ephemeral venv
@@ -105,6 +110,30 @@ jobs:
           if report['fw114']['internal_fw_version']!='1.14' or (
               report['fw115']['internal_fw_version']!='1.15'
           ):raise SystemExit('REJECT firmware mismatch')
+          # These guards are evidence from actual SLP-validated extracted ELFs.
+          route=report["capture_to_jpeg_static_route"]
+          if not route["native_callsite_rechecked_on_each_version"] or (
+              not route["capture_and_photo_files_sha256_identical_between_114_and_115"]
+          ):
+              raise SystemExit("REJECT static callsite file proof absent")
+          for v in ("fw114","fw115"):
+              p=route[v]
+              if p["capture_recipe_calls_verified"]!=9 or (
+                  p["photo_encodeycc_edges_verified"]!=8
+              ) or not p["photo_to_sif_encodeycc_link"][
+                  "photolib_plt_import_sif_export_mangled_equal"
+              ] or not p["jpeg_sof_sampling_420_witness"]:
+                  raise SystemExit("REJECT incomplete static capture-to-JPEG route")
+              if p["live_encoder_receives_film_pixels_proven"] or (
+                  p["camera_install_or_flash_permitted"]
+              ):
+                  raise SystemExit("REJECT false on-camera claim")
+          if route["camera_firmware_flash_permitted"] or (
+              route["firmware_abi_equivalence_proven"]
+          ):
+              raise SystemExit("REJECT invalid firmware readiness")
+          print("PASS actual FW114/115 9 still callsites + 8 photo JPEG edges")
+          print("PASS SIF EncodeYCC binding witness; camera ABI still NO-GO")
           print('PASS native ELF FW114/115 file-hash and sampled-symbol delta report')
           PY
 
