@@ -153,3 +153,24 @@ The next QEMU regression explicitly adds
 film-to-JPEG algorithm for the **observed ISA**. This is a closer CPU/FP
 instruction model, not proven Tizen loader compatibility. No manufacturer
 authenticity or physical-camera runtime behavior is established.
+
+## Actual FW1.14 C runtime / dynamic linker and GNU executable contrast
+
+Tool: research/nx300m_fw114_runtime_linkage_audit.py.
+It analyzes actual mirrored, internally SLP-verified FW1.14 and FW1.15
+platform.img -> UBIFS contents **without executing target ELF files**.
+From the private firmware filesystem, locate libc.so.6, libm.so.6,
+libpthread.so.0, libstdc++.so.6, ld-linux.so.3 and/or
+ld-linux-armhf.so.3. Follow only symlinks resolving *inside* extracted
+root; record readelf metadata and SHA-256 without exporting binary files.
+Inspect three source-proved camera libraries' NEEDED names and optional
+di-camera-app PT_INTERP static property.
+
+GLIBC versions *defined* by target libc are distinct from GLIBC versions
+*required* by a GNU-built executable. The CI records both; an ARM EABI5
+match does not guarantee a compatible loader or C runtime.
+
+Static library file presence does NOT prove full dependency closure,
+symbol-by-symbol linking or safe on-camera execution. No live camera,
+firmware writes, RAM reads, proprietary binary uploads or full-brick
+recovery were attempted. **Firmware installation remains NO-GO.**

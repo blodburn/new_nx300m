@@ -26,6 +26,7 @@ test: multimodel-test
 	@python3 research/test_nx300m_fw114_capture_jpeg_route.py
 	@python3 research/test_nx300m_fw114_runtime_metadata_gate.py
 	@python3 research/test_nx300m_fw114_arm_loader_abi.py
+	@python3 research/test_nx300m_fw114_runtime_linkage_audit.py
 	@python3 research/test_nx300m_capture_manifest_gate.py
 	@python3 research/test_nx300m_cube_to_lut18.py
 	@python3 research/test_nx300m_spektrafilm_real_profile_qa.py
