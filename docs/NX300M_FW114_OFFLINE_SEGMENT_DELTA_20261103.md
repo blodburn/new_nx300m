@@ -116,3 +116,37 @@ vendor-source verification, only a fact about internally valid mirror copies.
 The initial workflow labeled a self-computed download digest as if externally
 supplied. A follow-up change explicitly removed that label: the digest proves
 consistency among reads, **not independent trusted manufacturer provenance**.
+
+## Native FW1.14 UBI / ELF static comparison (2026-11-03)
+
+The two actual mirror archives were previously validated with the SLP v1
+five-image JAMCRC + pcache checks. Image 4, the **platform UBI** filesystem,
+was different between FW1.14 and FW1.15, even though both are the same size.
+This means **never transplant old 1.15 numerical ARM callsite offsets**.
+
+A new host-only pipeline `research/nx300m_fw114_native_elf_diff.py`:
+
+- Opens each existing private ZIP and validates the internal SLP model/version,
+  region CRC and SHA-256 before streaming only **platform.img** to mode-0600
+  ephemeral storage; never exposes the firmware as an upload/repository artifact.
+- Checks sampled UBI EC headers at eraseblock boundaries, PEB 131072 bytes,
+  VID offset 2048, data offset 4096, as documented for the Samsung NX family.
+- Calls pinned userspace `ubi-reader==0.8.16` **without mount, chroot, device,
+  root permissions or firmware code execution**; extracts to disposable temp.
+- Inspects ARM32 ELF files whose names match Capture/ISP/JPEG-related
+  libraries/app; reads dynamic symbols only via readelf and demangles symbols.
+- Compares byte hashes, lengths and same-named native dynamic-symbol values
+  across the two versions. A changed file or symbol is **negative evidence**
+  for reusing 1.15 offsets. It is NOT a complete verified 1.14 calling contract.
+- Synthetic tests include version mismatch, SLP CRC, NAND header geometry,
+  rejected symlink/writable output roots, ELF SHA/address difference and
+  conservative metadata-only ABI gates.
+
+Action: `.github/workflows/nx300m-fw114-native-elf-diff.yml`.
+Run artifact policy: **no Samsung firmware, ELF or generated derivative
+uploaded or committed**. Logs may contain short symbol/path/hash metadata.
+The source is an unofficial mirror and remains untrusted for authenticity.
+
+Real FW1.14 camera integration **remains NO-GO** until version-specific
+callsite/dependency, sensor Y/C data ownership, hardware RAM and full recovery
+are established independently.
