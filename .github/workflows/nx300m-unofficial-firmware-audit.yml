@@ -1,0 +1,88 @@
+name: NX300M archived FW1.14 vs FW1.15 read-only evidence
+
+on:
+  push:
+    paths:
+      - '.github/workflows/nx300m-unofficial-firmware-audit.yml'
+      - 'research/nx300m_unofficial_archive_acquire.py'
+      - 'research/test_nx300m_unofficial_archive_acquire.py'
+      - 'research/nx300m_fw114_binary_delta.py'
+      - 'research/nx300m_slp_firmware_integrity.py'
+  pull_request:
+    paths:
+      - '.github/workflows/nx300m-unofficial-firmware-audit.yml'
+      - 'research/nx300m_unofficial_archive_acquire.py'
+      - 'research/test_nx300m_unofficial_archive_acquire.py'
+      - 'research/nx300m_fw114_binary_delta.py'
+      - 'research/nx300m_slp_firmware_integrity.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  offline-untrusted-archive:
+    name: Verify bounded third-party 1.14/1.15 ZIP (no camera/device)
+    runs-on: ubuntu-latest
+    timeout-minutes: 28
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify synthetic network refusal, ZIP safety and no flash invariants
+        shell: bash
+        run: |
+          set -euo pipefail
+          PYTHONDONTWRITEBYTECODE=1 python3 research/test_nx300m_unofficial_archive_acquire.py
+          PYTHONDONTWRITEBYTECODE=1 python3 research/test_nx300m_fw114_binary_delta.py
+          PYTHONDONTWRITEBYTECODE=1 python3 research/test_nx300m_slp_firmware_integrity.py
+
+      - name: Download from the explicit unofficial NX archive and inspect internally
+        shell: bash
+        timeout-minutes: 22
+        run: |
+          set -euo pipefail
+          evidence_dir="$RUNNER_TEMP/nx300m_unofficial_archive_evidence"
+          mkdir -m 700 -p "$evidence_dir"
+          python3 research/nx300m_unofficial_archive_acquire.py \
+            --private-dir "$evidence_dir" --summary "$GITHUB_STEP_SUMMARY" \
+            | tee "$RUNNER_TEMP/nx300m_unofficial_archive_probe.jsonl"
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          lines = (Path(os.environ["RUNNER_TEMP"]) /
+                   "nx300m_unofficial_archive_probe.jsonl").read_text().splitlines()
+          prefix = "NX300M_ARCHIVE_COMPARE_JSON "
+          values = [json.loads(line[len(prefix):]) for line in lines
+                    if line.startswith(prefix)]
+          if len(values) != 1:
+              raise SystemExit("REJECT: no precisely one archive report")
+          v = values[0]
+          if v["source_class"] != "UNOFFICIAL_MIRROR_UNAUTHENTICATED":
+              raise SystemExit("REJECT: provenance incorrectly overstated")
+          if v["target"]["internal_version"] != "1.14" or (
+              v["reference"]["internal_version"] != "1.15"
+          ):
+              raise SystemExit("REJECT: firmware internal versions mismatch")
+          if len(v["images"]) != 5:
+              raise SystemExit("REJECT: SLP region count != 5")
+          if v["manufacturer_binary_identity_proven"] is not False or (
+              v["on_camera_validated"] is not False
+          ) or v["camera_firmware_modification_permitted"] is not False:
+              raise SystemExit("REJECT: unsupported camera safety claim")
+          if v["target"]["model"] != "NX300M" or (
+              v["reference"]["model"] != "NX300M"
+          ):
+              raise SystemExit("REJECT: wrong model")
+          print("PASS: actual archive 1.14/1.15 SLP integrity + 5-region SHA comparison")
+          print("PASS: proprietary source only ephemeral; no modified firmware output")
+          PY
+
+      - name: Remove downloaded archives from CI runner
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence_dir="$RUNNER_TEMP/nx300m_unofficial_archive_evidence"
+          rm -f -- "$evidence_dir/NX300M_FW_v1.14.zip" \
+                   "$evidence_dir/NX300M_FW_v1.15.zip"
+          echo "PASS: known temporary archive files removed; no artifact uploaded."

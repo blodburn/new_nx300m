@@ -52,3 +52,34 @@ Source:
 - `research/nx300m_slp_firmware_integrity.py`
 - `research/nx300m_fw114_binary_delta.py`
 - `research/test_nx300m_fw114_binary_delta.py`
+
+## Archive availability discovery and isolated CI attempt (2026-11-03)
+
+The third-party Samsung NX Files archive exposes **both**
+`NX300M_FW_v1.14.zip` and `NX300M_FW_v1.15.zip` at
+`https://nxfiles.ydns.eu/files/NX300M/Firmware/`. This is a **non-official**
+mirror with no verified manufacturer's signing or independent hash ledger.
+The historical Softpedia listing independently confirms that firmware v1.14
+was distributed, **not** that the mirror bytes are official or identical.
+
+A new GitHub Actions workflow
+`.github/workflows/nx300m-unofficial-firmware-audit.yml` performs a
+single isolated **read-only investigation** of two pinned archive URLs:
+
+1. Test the acquisition, size, URL, redirect and ZIP-safety logic with
+   network-free synthetic fixtures.
+2. Download at most 300 MiB per ZIP into mode-0700 runner temp storage; reject
+   unsafe redirects, corrupt/truncated/oversized data and same-path overwrite.
+3. Parse SLP version/model/5 image JAMCRC/pcache JAMCRC plus SHA-256 with
+   `nx300m_slp_firmware_integrity.py`. Require v1.14 and v1.15 internally.
+4. Compare image-region SHA-256 and sizes using
+   `nx300m_fw114_binary_delta.py`. Print factual hashes and changed region
+   counts only, with manufacturer provenance and installability marked false.
+5. Delete temporary copies. **Never** upload a firmware or binary artifact to
+   GitHub, the chat session or an archive.
+
+CI can succeed only when it truly downloads/validates both files. If the
+unofficial mirror blocks download, the workflow **fails** rather than
+fabricating a successful real-firmware comparison.
+
+**Camera firmware installation and native ABI assumptions remain NO-GO.**
