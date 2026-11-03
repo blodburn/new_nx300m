@@ -98,3 +98,58 @@ Next physical gates: manual verified stock 1.14 and safe restore/recovery;
 validated same-stage Y/C+RGB capture copies with proper consent; memory and
 hot-path latency measurement **on camera**; RAW/JPEG behavior with EXIF and
 MakerNotes. Until then, camera patch and flash remain NO-GO.
+
+## ARM EABI / floating-point calling convention and loader review
+
+Added `research/nx300m_fw114_arm_loader_abi.py` to examine the **actual
+private FW1.14/1.15 extracted** camera native `libsif.so`,
+`libmm-photo.so` and `libcapture-fw-slpcam-nx300.so` files.
+The tool reads ARM ELF32 EABI header flags, `readelf -A` CPU and VFP
+calling-convention attributes, `readelf -d` dependency SONAMEs and
+`readelf -l` executable interpreter, then compares static metadata.
+
+It independently measures the ARM32 GNU EABI QEMU test executable too.
+A matching EABI version is **not** proof that a GNU/Linux binary uses the
+camera's Tizen-era libc, dynamic loader, EFL, graphics, lens or native
+camera API. A `PT_INTERP` in a GNU/Linux test binary is only its own
+loader requirement. Camera plugin loadability is intentionally **false**
+in all machine-readable records. No binary is flashed or copied to camera.
+
+CI: `.github/workflows/nx300m-fw114-native-elf-diff.yml` compares actual
+camera ELF records; `.github/workflows/nx300m-arm32-passive-probe.yml`
+checks the separately GNU-cross-built ARM32 simulation binary.
+
+**Remaining device gates:** authentically attested installed FW1.14,
+read-only runtime loader/ABI evidence from an already authorized shell,
+frame/plane ownership and chroma format, actual camera RAM and latency,
+MakerNotes/RAW parity, and a tested full-brick recovery method.
+
+## Measured actual FW1.14/1.15 ABI (isolated real-archive CI 41622267227)
+
+These are properties of **actual mirror-downloaded and SLP-verified** NX300M
+libraries, not observations from the user's physical camera. All data were
+read from private ephemeral extracted UBIFS files.
+
+| Native camera shared library | EABI | CPU tag | FP instruction tag | ELF float calling convention |
+|---|---|---|---|---|
+| `libcapture-fw-slpcam-nx300.so` | 5 | ARMv7 | VFPv2 | not declared by ELF flags or VFP-args attribute |
+| `libmm-photo.so` | 5 | ARMv7 | VFPv2 | not declared by ELF flags or VFP-args attribute |
+| `libsif.so` | 5 | ARMv7 | VFPv2 | not declared by ELF flags or VFP-args attribute |
+
+For all three, `e_flags=0x05000002`, and the known static ABI attributes,
+required SONAME names and ELF PT_INTERP metadata are identical between
+mirror FW1.14 and FW1.15. These are shared libraries, so PT_INTERP was
+absent. The exact procedure/camera-application loader and target ABI calling
+convention must be independently verified before linking a new module.
+
+**Original QEMU GNU test binary** (run 41622267537): ARM EABI5,
+`Tag_CPU_arch=v5T`, no declared VFP arch, ELF soft-float flag
+`e_flags=0x05000200`, program interpreter `/lib/ld-linux.so.3`,
+GNU libc6 and libm6 dependencies. This is NOT a verified Samsung Tizen
+target build.
+
+The next QEMU regression explicitly adds
+`-march=armv7-a -mfpu=vfpv2 -mfloat-abi=softfp` to build the same synthetic
+film-to-JPEG algorithm for the **observed ISA**. This is a closer CPU/FP
+instruction model, not proven Tizen loader compatibility. No manufacturer
+authenticity or physical-camera runtime behavior is established.

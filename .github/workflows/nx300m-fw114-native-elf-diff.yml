@@ -5,6 +5,8 @@ on:
     paths:
       - '.github/workflows/nx300m-fw114-native-elf-diff.yml'
       - 'research/nx300m_fw114_native_elf_diff.py'
+      - 'research/nx300m_fw114_arm_loader_abi.py'
+      - 'research/test_nx300m_fw114_arm_loader_abi.py'
       - 'research/nx300m_fw114_function_proofs.py'
       - 'research/nx300m_fw114_capture_jpeg_route.py'
       - 'research/test_nx300m_fw114_capture_jpeg_route.py'
@@ -16,6 +18,8 @@ on:
     paths:
       - '.github/workflows/nx300m-fw114-native-elf-diff.yml'
       - 'research/nx300m_fw114_native_elf_diff.py'
+      - 'research/nx300m_fw114_arm_loader_abi.py'
+      - 'research/test_nx300m_fw114_arm_loader_abi.py'
       - 'research/nx300m_fw114_function_proofs.py'
       - 'research/nx300m_fw114_capture_jpeg_route.py'
       - 'research/test_nx300m_fw114_capture_jpeg_route.py'
@@ -41,6 +45,7 @@ jobs:
         run: |
           set -euo pipefail
           python3 research/test_nx300m_fw114_native_elf_diff.py
+          python3 research/test_nx300m_fw114_arm_loader_abi.py
           python3 research/test_nx300m_fw114_function_proofs.py
           python3 research/test_nx300m_fw114_capture_jpeg_route.py
           python3 research/test_nx300m_fw114_binary_delta.py
@@ -133,6 +138,26 @@ jobs:
           ):
               raise SystemExit("REJECT invalid firmware readiness")
           print("PASS actual FW114/115 9 still callsites + 8 photo JPEG edges")
+          required=("libmm-photo.so","libsif.so","libcapture-fw-slpcam-nx300.so")
+          lookup={x["library"]:x for x in comp["compared_native_elfs"]}
+          for name in required:
+              if name not in lookup or (
+                  "static_arm_loader_abi_comparison" not in lookup[name]
+              ):
+                  raise SystemExit("REJECT: ARM ABI source record missing "+name)
+              a=lookup[name]["fw114_arm_loader_abi"]
+              b=lookup[name]["fw115_arm_loader_abi"]
+              if a["eabi"]!=5 or b["eabi"]!=5 or (
+                  not a["arm32_eabi5_little_endian"]
+              ) or not b["arm32_eabi5_little_endian"]:
+                  raise SystemExit("REJECT: expected ARM32 EABI5 not verified")
+              if lookup[name]["static_arm_loader_abi_comparison"][
+                  "runtime_loader_compatibility_verified"
+              ]:
+                  raise SystemExit("REJECT: runtime ABI proof overstated")
+              print("NX300M_ACTUAL_ARM_ABI",name,
+                    "1.14",a["float_abi_eflags"],a["float_abi_attributes"],
+                    "1.15",b["float_abi_eflags"],b["float_abi_attributes"])
           print("PASS SIF EncodeYCC binding witness; camera ABI still NO-GO")
           print('PASS native ELF FW114/115 file-hash and sampled-symbol delta report')
           PY

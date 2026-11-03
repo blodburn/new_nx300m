@@ -8,6 +8,8 @@ on:
       - "research/nx300m_host420_lutgrid_jpeg.h"
       - "research/test_nx300m_host420_lutgrid_jpeg.c"
       - "research/nx300m_fw114_runtime_metadata_gate.py"
+      - "research/nx300m_fw114_arm_loader_abi.py"
+      - "research/test_nx300m_fw114_arm_loader_abi.py"
       - "research/test_nx300m_fw114_runtime_metadata_gate.py"
       - "scripts/nx300m_fw114_runtime_metadata_probe.sh"
   pull_request:
@@ -17,6 +19,8 @@ on:
       - "research/nx300m_host420_lutgrid_jpeg.h"
       - "research/test_nx300m_host420_lutgrid_jpeg.c"
       - "research/nx300m_fw114_runtime_metadata_gate.py"
+      - "research/nx300m_fw114_arm_loader_abi.py"
+      - "research/test_nx300m_fw114_arm_loader_abi.py"
       - "research/test_nx300m_fw114_runtime_metadata_gate.py"
       - "scripts/nx300m_fw114_runtime_metadata_probe.sh"
   workflow_dispatch:
@@ -37,6 +41,7 @@ jobs:
           set -euo pipefail
           sh -n scripts/nx300m_fw114_runtime_metadata_probe.sh
           python3 research/test_nx300m_fw114_runtime_metadata_gate.py
+          python3 research/test_nx300m_fw114_arm_loader_abi.py
 
       - name: Install GNU ARM32 cross compiler and QEMU userspace
         shell: bash
@@ -71,9 +76,74 @@ jobs:
             .build/nx300m_arm32_copyonly_lut65_jpeg_test \
             | tee "$RUNNER_TEMP/arm32_synthetic_parity.log"
           grep -q 'PASS 8 Y/C420' "$RUNNER_TEMP/arm32_synthetic_parity.log"
+          python3 research/nx300m_fw114_arm_loader_abi.py             --elf .build/nx300m_arm32_copyonly_lut65_jpeg_test             | tee "$RUNNER_TEMP/arm32_gnu_abi.jsonl"
+          python3 - <<'PY'
+          import json,os
+          from pathlib import Path
+          text=(Path(os.environ["RUNNER_TEMP"])/"arm32_gnu_abi.jsonl").read_text()
+          line=next((s for s in text.splitlines()
+                     if s.startswith("NX300M_ARM_ABI_JSON ")),None)
+          if line is None:raise SystemExit("REJECT missing ARM32 test ABI data")
+          data=json.loads(line[len("NX300M_ARM_ABI_JSON "):])["input"]
+          if not data["arm32_eabi5_little_endian"] or data["eabi"]!=5 or (
+              data["physical_nx300m_camera_loadability_verified"]
+          ):
+              raise SystemExit("REJECT bad ARM32 ABI safety flags")
+          print("ARM32_GNU_FLOAT_ABI",data["float_abi_eflags"])
+          print("ARM32_GNU_LOADER",data["program_interpreter"])
+          PY
           printf '%s\n' \
             'ARM32 GCC EABI + Linux glibc QEMU PASS, no physical camera or Tizen ABI claim' \
             >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Rebuild the same film pipeline for firmware-observed ARMv7 + VFPv2
+        shell: bash
+        timeout-minutes: 6
+        run: |
+          set -euo pipefail
+          arm-linux-gnueabi-gcc \
+            -march=armv7-a -mfpu=vfpv2 -mfloat-abi=softfp \
+            -std=c11 -O2 -Wall -Wextra -Werror -Iresearch \
+            research/test_nx300m_host420_lutgrid_jpeg.c \
+            research/nx300m_host420_lutgrid_jpeg.c \
+            research/nx300m_host_lutgrid_jpeg.c \
+            research/nx300m_ycc420_multimodel_probe.c \
+            research/nx300m_lut_grid_host.c \
+            research/nx300m_preview_rgb.c \
+            research/nx300m_lut18.c \
+            research/nx300m_host_jpeg_sink.c \
+            -lm -o .build/nx300m_armv7_vfpv2_copyonly_lut65_test
+          qemu-arm -cpu cortex-a9 -L /usr/arm-linux-gnueabi \
+            .build/nx300m_armv7_vfpv2_copyonly_lut65_test \
+            | tee "$RUNNER_TEMP/armv7_vfpv2_synthetic_parity.log"
+          grep -q 'PASS 8 Y/C420' "$RUNNER_TEMP/armv7_vfpv2_synthetic_parity.log"
+          python3 research/nx300m_fw114_arm_loader_abi.py \
+            --elf .build/nx300m_armv7_vfpv2_copyonly_lut65_test \
+            | tee "$RUNNER_TEMP/armv7_vfpv2_abi.jsonl"
+          python3 - <<'PY'
+          import json,os
+          from pathlib import Path
+          p=Path(os.environ["RUNNER_TEMP"])/"armv7_vfpv2_abi.jsonl"
+          line=next((x for x in p.read_text().splitlines()
+                     if x.startswith("NX300M_ARM_ABI_JSON ")),None)
+          if not line:raise SystemExit("REJECT missing ARMv7 ABI evidence")
+          record=json.loads(line[len("NX300M_ARM_ABI_JSON "):])["input"]
+          if record["eabi"]!=5 or record["tag_cpu_arch"]!="v7" or (
+              "VFPv2" not in record["tag_fp_arch"]
+          ):
+              raise SystemExit("REJECT: compiler output does not target FW114 CPU/VFP")
+          if record["physical_nx300m_camera_loadability_verified"]:
+              raise SystemExit("REJECT: false on-camera claim")
+          print("PASS ARMv7 VFPv2 GNU EABI QEMU JPEG parity with target ISA")
+          print("TARGET_ABI",record["float_abi_eflags"],
+                record["float_abi_attributes"],
+                "LOADER",record["program_interpreter"])
+          with open(os.environ["GITHUB_STEP_SUMMARY"],"a",encoding="utf-8") as f:
+              f.write("\n### ARMv7 / VFPv2 film pipeline QEMU (not Tizen)\n")
+              f.write("Cross-build targeted ARMv7 + VFPv2 and GNU softfp "
+                      "calling convention; all 8 synthetic JPEG parity cases pass. "
+                      "No camera loader, live ISP or firmware flash approval.\n")
+          PY
 
       - name: Reject unsafe ARM-on-camera conclusions
         shell: bash
@@ -100,6 +170,7 @@ jobs:
         run: |
           set -euo pipefail
           rm -f .build/nx300m_arm32_copyonly_lut65_jpeg_test
+          rm -f .build/nx300m_armv7_vfpv2_copyonly_lut65_test
           find outputs -maxdepth 1 -type f -name 'stream420_*.jpg' -delete \
             2>/dev/null || true
           echo 'No firmware, camera captures or ARM executables are uploaded.'
