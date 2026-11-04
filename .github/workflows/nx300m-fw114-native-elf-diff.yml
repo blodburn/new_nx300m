@@ -15,6 +15,8 @@ on:
       - 'research/test_nx300m_fw114_sif_callgraph.py'
       - 'research/nx300m_fw114_sif_virtual_dispatch.py'
       - 'research/test_nx300m_fw114_sif_virtual_dispatch.py'
+      - 'research/nx300m_fw114_jfif_r6_arg_provenance.py'
+      - 'research/test_nx300m_fw114_jfif_r6_arg_provenance.py'
       - 'research/test_nx300m_fw114_capture_jpeg_route.py'
       - 'research/test_nx300m_fw114_function_proofs.py'
       - 'research/test_nx300m_fw114_native_elf_diff.py'
@@ -34,6 +36,8 @@ on:
       - 'research/test_nx300m_fw114_sif_callgraph.py'
       - 'research/nx300m_fw114_sif_virtual_dispatch.py'
       - 'research/test_nx300m_fw114_sif_virtual_dispatch.py'
+      - 'research/nx300m_fw114_jfif_r6_arg_provenance.py'
+      - 'research/test_nx300m_fw114_jfif_r6_arg_provenance.py'
       - 'research/test_nx300m_fw114_capture_jpeg_route.py'
       - 'research/test_nx300m_fw114_function_proofs.py'
       - 'research/test_nx300m_fw114_native_elf_diff.py'
@@ -63,6 +67,7 @@ jobs:
           python3 research/test_nx300m_fw114_capture_jpeg_route.py
           python3 research/test_nx300m_fw114_sif_callgraph.py
           python3 research/test_nx300m_fw114_sif_virtual_dispatch.py
+          python3 research/test_nx300m_fw114_jfif_r6_arg_provenance.py
           python3 research/test_nx300m_fw114_binary_delta.py
 
       - name: Install pinned offline UBI reader in ephemeral venv
@@ -340,6 +345,31 @@ jobs:
                                 call["site_address"],call["source_writer_windows"])
           print("PASS FW1.14/1.15 static SIF vtable and indirect BLX audit; "
                 "camera buffer and on-device hook still NOT VERIFIED")
+          provenance=report["jfif_encode_r6_argument_provenance"]
+          for v in ("fw114","fw115"):
+              p=provenance[v]
+              if (p["blx_register"]!="r6" or
+                  p["field_load_expression"]!="LDR r6, [r3, #12]" or
+                  p["field_byte_offset"]!=12 or
+                  p["base_pointer_source_register"]!="fp" or
+                  p["blx_register_site"]!="0x00028c18" or
+                  p["r6_field_load_site"]!="0x00028b1c"):
+                  raise SystemExit("REJECT wrong JpegEncode r6 function pointer evidence "+v)
+              if (p["indirect_call_runtime_target_proven"] or
+                  p["hal_encode_target_proven"] or
+                  p["live_capture_buffer_ownership_proven"] or
+                  p["camera_install_or_flash_permitted"]):
+                  raise SystemExit("REJECT incorrect camera safety claim "+v)
+              print("NX300M_REAL_JFIF_ARG_POINTER",v,
+                    "stack_offset",p["base_pointer_stack_offset"],
+                    "source_load",p["base_pointer_load_site"],
+                    "field_load",p["r6_field_load_site"],
+                    "call",p["blx_register_site"],
+                    "writes",p["stack_slot_store_candidates"],
+                    "candidate_r1",p["incoming_sJpegOp_r1_saved_to_slot_candidate"],
+                    "hardware_target_proven",p["hal_encode_target_proven"])
+          print("PASS FW114/115 real JpegEncode argument → fp slot → r6 field "
+                "static evidence; runtime HAL target still NOT PROVEN")
           print('PASS native ELF FW114/115 file-hash and sampled-symbol delta report')
           PY
 
