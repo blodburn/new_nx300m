@@ -48,4 +48,17 @@ typedef struct {
 NX_FREESTANDING_EXPORT
 int nx_film_core_render_owned420_hypothesis(
     const nx_film_owned420_hypothesis_job *job);
+
+/* Emit only [first_row, first_row + row_count) into rgb[0..].
+ * RGB payload uses job->rgb_stride per emitted row, NOT the global frame
+ * offset. Y/C and height still describe the complete independent COPY.
+ * Any first_row parity is valid; 4:2:0 chroma sampling uses global row/2.
+ * Output may be one RGB row (width*3 bytes), not a full-frame staging
+ * allocation. Caller must handle JPEG row/MCU ordering externally.
+ * All validation occurs before any writes; invalid spans leave rgb intact.
+ */
+NX_FREESTANDING_EXPORT
+int nx_film_core_render_owned420_rows_hypothesis(
+    const nx_film_owned420_hypothesis_job *job,
+    unsigned first_row, unsigned row_count);
 #endif
