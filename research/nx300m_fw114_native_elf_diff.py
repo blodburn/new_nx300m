@@ -29,6 +29,7 @@ import nx300m_fw114_sif_callgraph as sif_graph
 import nx300m_fw114_sif_virtual_dispatch as sif_virtual
 import nx300m_fw114_jfif_r6_arg_provenance as jfif_arg
 import nx300m_fw114_hal_table_plus8_audit as hal_plus8
+import nx300m_fw114_photo_ycc_copy_boundary as photo_buffer
 import nx300m_fw114_arm_loader_abi as arm_loader
 import nx300m_fw114_runtime_linkage_audit as runtime_linkage
 
@@ -354,6 +355,9 @@ def analyze(archives: dict[str, Path], private_root: Path,
         hal_producer = hal_plus8.compare_versions(
             route_paths["1.14"][static_route.SIF],
             route_paths["1.15"][static_route.SIF])
+        ycc_copy_boundary = photo_buffer.compare_versions(
+            route_paths["1.14"][static_route.PHOTO],
+            route_paths["1.15"][static_route.PHOTO])
         return {
             "scope": "UNOFFICIAL_MIRROR_OFFLINE_HOST_ONLY",
             "source_chain_of_custody_confirmed": False,
@@ -366,6 +370,7 @@ def analyze(archives: dict[str, Path], private_root: Path,
             "version_specific_sif_virtual_dispatch": sif_virtual_dispatch,
             "jfif_encode_r6_argument_provenance": jfif_r6_provenance,
             "hal_table_plus8_initialization_witness":hal_producer,
+            "fw114_photo_ycc_copy_boundary":ycc_copy_boundary,
             "camera_flash_permitted": False,
             "camera_isp_buffer_contract_verified": False,
             "camera_recovery_procedure_verified": False,
