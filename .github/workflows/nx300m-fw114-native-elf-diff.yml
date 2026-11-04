@@ -256,7 +256,10 @@ jobs:
                         slot["vtable_byte_offset"],
                         slot["stored_word"],
                         slot["relocation"],
-                        slot["target_defined_function"] or "NOT_RESOLVED")
+                        slot["target_defined_function"] or "NOT_RESOLVED",
+                        "RELOCATION_SYMBOL",slot["relocation_symbol"] or "NONE",
+                        "REL_SYMBOL_VALUE",slot["relocation_symbol_value"] or "NONE",
+                        "MATCH_DEFINED",slot["relocation_is_defined_function"])
               for name,item in a["recognized_methods"].items():
                   print("FW_SIF_VTABLE_METHOD",v,name,item["function_address"],
                         "OFFSETS",item["vtable_matching_slot_offsets"])
