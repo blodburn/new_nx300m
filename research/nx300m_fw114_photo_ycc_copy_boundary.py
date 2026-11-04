@@ -121,6 +121,63 @@ def validate_jpeg_abi_marshal(words:tuple[int,...],start:int)->dict:
     }
 
 
+def validate_native_ycc_jpeg_stack_args(words:tuple[int,...],start:int)->dict:
+    """Verify 11 consecutive AAPCS stack arguments before DscImage EncodeYCC.
+
+    Each ARM opcode is checked against the independently analyzed FW1.14
+    photo ELF. This proves register/store byte patterns only, not the
+    runtime buffer addresses, validity or actual on-camera execution.
+    """
+    expected=(
+        (0x34d20,0xe58d9000,0,"C1","r9"),
+        (0x34d28,0xe58d2004,4,"pointer/aux arg5","r2=0"),
+        (0x34d30,0xe58d2008,8,"pointer/aux arg6","r2=0"),
+        (0x34d38,0xe58d200c,12,"pointer/aux arg7","r2=[fp-104]"),
+        (0x34d3c,0xe58da010,16,"Width","r10"),
+        (0x34d40,0xe58d8014,20,"Height","r8"),
+        (0x34d44,0xe58d3018,24,"Stride","r3"),
+        (0x34d4c,0xe58d301c,28,"eImgYCCType","r3=[fp-40]"),
+        (0x34d54,0xe58d3020,32,"eImgYCCPackType","r3=[fp-44]"),
+        (0x34d5c,0xe58d3024,36,"eImgQuality","r3=2"),
+        (0x34d64,0xe58d3028,40,"final int","r3=2000"),
+    )
+    immediately_prior=(
+        (0x34d24,0xe3a02000),
+        (0x34d2c,0xe3a02000),
+        (0x34d34,0xe51b2068),
+        (0x34d48,0xe51b3028),
+        (0x34d50,0xe51b302c),
+        (0x34d58,0xe3a03002),
+        (0x34d60,0xe3a03e7d),
+    )
+    for site,opcode in immediately_prior:
+        i=(site-start)//4
+        if i<0 or i>=len(words) or words[i]!=opcode:
+            raise ValueError("Native YCC JPEG stack source opcode changed")
+    args=[]
+    for site,opcode,off,arg_name,source in expected:
+        i=(site-start)//4
+        if i<0 or i>=len(words) or words[i]!=opcode:
+            raise ValueError("Native YCC JPEG stack argument opcode changed")
+        args.append({
+            "SP_byte_offset":off,
+            "native_abi_arg":arg_name,
+            "stored_from":source,
+            "store_site":"0x%08x"%site,
+            "opcode":"0x%08x"%opcode,
+        })
+    return {
+        "DscImage_EncodeYCC_stack_args":args,
+        "stack_parameter_count":len(args),
+        "code_confirmed_immediate_quality":2,
+        "code_confirmed_last_integer":2000,
+        "C1_and_geometry_stack_arg_opcode_verified":True,
+        "source_descriptor_runtime_values_proven":False,
+        "raw_DMA_buffer_copy_safe":False,
+        "camera_firmware_flash_permitted":False,
+    }
+
+
 def decode_edges(
     image:bytes,loads:list[tuple[int,int,int]],
     defined:dict[int,str],relocs:dict[int,str],
@@ -206,6 +263,7 @@ def inspect(path:Path)->dict:
                 })
             result["validated_ycc_getter_to_encoder_order"]=getter_sequence
             result["native_arm_jpeg_getter_register_abi"]=validate_jpeg_abi_marshal(words,start=0x34b18)
+            result["native_arm_jpeg_stack_arg_abi"]=validate_native_ycc_jpeg_stack_args(words,start=0x34b18)
             result["pre_encode_stack_marshalling_arm"]=[
                 {"pc":"0x%08x"%(0x34d20+i*4),
                  "opcode":"0x%08x"%words[(0x34d20-0x34b18)//4+i]}
