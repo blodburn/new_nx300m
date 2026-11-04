@@ -15,6 +15,8 @@ import re
 import struct
 
 import nx300m_fw114_function_proofs as focus
+import nx300m_fw114_sif_callgraph as calls
+import nx300m_native_jpeg_abi_boundary_audit as jpeg
 import nx300m_pw_ui_bl_call_audit as arm
 
 SIF_MAX_BYTES=2*1024*1024
@@ -393,6 +395,17 @@ def inspect(path:Path)->dict:
             "function_bytes":fn["size"],
             **scan_indirect(data,loads,fn["address"],fn["size"])
         }
+    task=funcs["DscJPEG::TaskMain("]
+    task_addr=int(task["function_address"],16)
+    task_direct=calls.collect_edges(
+        data,loads,task_addr,task["function_bytes"],
+        calls.defined_symbols(path),
+        jpeg.relocations(relocation_text)
+    )
+    jpeg_named=[edge for edge in task_direct["identified_callsite_evidence"]
+                if any(word in edge["target_symbol"]
+                       for word in ("JpegEncode","Jfif","jpeg_encoder",
+                                    "DscJPEG","EncodeYCC"))]
     return {
         "source_scope":"UNOFFICIAL_MIRROR_PRIVATE_SIF_ELF",
         "libsif_sha256":hashlib.sha256(data).hexdigest(),
@@ -403,6 +416,10 @@ def inspect(path:Path)->dict:
         "recognized_methods":methods,
         "jpeg_related_relocation_targets":jpeg_callback_relocations,
         "indirect_elf_functions":funcs,
+        "taskmain_direct_arm_bl_count":
+            task_direct["arm_direct_bl_candidate_count"],
+        "taskmain_direct_resolved_jpeg_edges":jpeg_named,
+        "taskmain_direct_edge_slicing_is_runtime_proof":False,
         "dynamic_dispatch_between_encode_and_codec_proven":False,
         "camera_buffer_ownership_verified":False,
         "on_camera_runtime_execution_verified":False,
