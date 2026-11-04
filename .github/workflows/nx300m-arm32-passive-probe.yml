@@ -13,6 +13,10 @@ on:
       - "research/test_nx300m_fw114_runtime_linkage_audit.py"
       - "research/test_nx300m_fw114_arm_loader_abi.py"
       - "research/test_nx300m_fw114_runtime_metadata_gate.py"
+      - "research/nx300m_capture_evidence_model_gate.py"
+      - "research/test_nx300m_capture_evidence_model_gate.py"
+      - "research/nx300m_capture_manifest_gate.py"
+      - "research/test_nx300m_capture_manifest_gate.py"
       - "scripts/nx300m_fw114_runtime_metadata_probe.sh"
   pull_request:
     paths:
@@ -26,6 +30,10 @@ on:
       - "research/test_nx300m_fw114_runtime_linkage_audit.py"
       - "research/test_nx300m_fw114_arm_loader_abi.py"
       - "research/test_nx300m_fw114_runtime_metadata_gate.py"
+      - "research/nx300m_capture_evidence_model_gate.py"
+      - "research/test_nx300m_capture_evidence_model_gate.py"
+      - "research/nx300m_capture_manifest_gate.py"
+      - "research/test_nx300m_capture_manifest_gate.py"
       - "scripts/nx300m_fw114_runtime_metadata_probe.sh"
   workflow_dispatch:
 
@@ -45,6 +53,7 @@ jobs:
           set -euo pipefail
           sh -n scripts/nx300m_fw114_runtime_metadata_probe.sh
           python3 research/test_nx300m_fw114_runtime_metadata_gate.py
+          make capture-evidence-test
           python3 research/test_nx300m_fw114_arm_loader_abi.py
           python3 research/test_nx300m_fw114_runtime_linkage_audit.py
 
