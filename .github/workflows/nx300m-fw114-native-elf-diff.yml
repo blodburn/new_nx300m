@@ -263,6 +263,13 @@ jobs:
               for name,item in a["recognized_methods"].items():
                   print("FW_SIF_VTABLE_METHOD",v,name,item["function_address"],
                         "OFFSETS",item["vtable_matching_slot_offsets"])
+              for rel in a["jpeg_related_relocation_targets"]:
+                  print("FW_SIF_RELOCATED_JPEG_CALLBACK",v,
+                        rel["relocation_vaddr"],
+                        rel["relocation_type"],
+                        rel["symbol_value"],
+                        rel["target_native_symbol"],
+                        "RUNTIME_PROVEN",rel["live_callback_invocation_verified"])
               for fn,entry in a["indirect_elf_functions"].items():
                   print("FW_SIF_INDIRECT_FUNCTION",v,fn,
                         "START",entry["function_address"],
@@ -285,6 +292,8 @@ jobs:
                                 call["prior_register_writer_candidates"])
                           print("FW_SIF_BLX_PRECEDING_WORDS",v,fn,
                                 call["site_address"],call["preceding_arm_words"])
+                          print("FW_SIF_REGISTER_SOURCE_CONTEXT",v,fn,
+                                call["site_address"],call["source_writer_windows"])
           print("PASS FW1.14/1.15 static SIF vtable and indirect BLX audit; "
                 "camera buffer and on-device hook still NOT VERIFIED")
           print('PASS native ELF FW114/115 file-hash and sampled-symbol delta report')
