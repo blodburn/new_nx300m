@@ -144,7 +144,7 @@ def jpeg_callback_relocation_witnesses(
                 )]
     if len(candidates)>500:
         reject("Unexpectedly many focused JPEG callback relocations")
-    raw="\\n".join(item["mangled_symbol"] for _,item in candidates)+"\\n"
+    raw="\n".join(item["mangled_symbol"] for _,item in candidates)+"\n"
     names=arm.offline_tool(["c++filt"],raw).splitlines() if candidates else []
     if len(names)!=len(candidates):
         reject("Incomplete JPEG symbol resolution")
