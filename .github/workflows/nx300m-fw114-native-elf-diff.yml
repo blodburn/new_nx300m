@@ -532,6 +532,36 @@ jobs:
                   y["camera_patch_or_flash_permitted"]
               ):
                   raise SystemExit("REJECT unsafe YCC native source proof")
+              encode=y["native_methods"]["CMmDeviceDriver::EncodeYcc("]
+              abi=encode["native_arm_jpeg_getter_register_abi"]
+              regs=abi["DscImage_EncodeYCC_first_four_arm_args"]
+              if (y["encoder_directly_invokes_blockcopy_or_memcpy"] or
+                  len(abi["getter_retval_register_transfers"])!=6 or
+                  [(r["argument"],r["destination"],r["source"]) for r in regs]!=[
+                      ("DscImage instance","r0","r7"),
+                      ("Y0","r1","r6"),("Y1","r2","r5"),("C0","r3","r4")
+                  ] or abi["safe_copy_insertion_proven"] or
+                  abi["photography_live_pixel_input_dma_owned"]):
+                  raise SystemExit("REJECT native YCC pointer ABI or unsafe copy claim "+v)
+              copy_1=y["native_methods"][
+                  "CMmDeviceDriver::BlockCopy(CYcc&, CYcc&)"]
+              copy_2=y["native_methods"][
+                  "CMmDeviceDriver::BlockCopy(CYcc&, sYccAddr)"]
+              if (not any("ep_bblt_ycc_copy(" in
+                  z["target_demangled"] for z in copy_1["named_copy_like_call_edges"])
+                  or not any("ep_bblt_ycc_copy(" in
+                  z["target_demangled"] for z in copy_2["named_copy_like_call_edges"])):
+                  raise SystemExit("REJECT missing independent YCC copy primitive "+v)
+              if not any("CMmDeviceDriver::ResizeImage(" in
+                      z["target_demangled"] for z in encode["named_call_edges"]):
+                  raise SystemExit("REJECT missing native YCC ResizeImage branch "+v)
+              print("FW114_NATIVE_JPEG_INPUT_ABI",v,
+                    [(a["argument"],a["destination"],a["source"]) for a in regs],
+                    "GETTERS",
+                    [(a["getter_result"],a["destination_register"])
+                     for a in abi["getter_retval_register_transfers"]])
+              print("FW114_NATIVE_JPEG_STACK_ARGS_RAW",v,
+                    encode["pre_encode_stack_marshalling_arm"])
               for method,proof in y["native_methods"].items():
                   print("FW114_NATIVE_YCC_COPY_METHOD",v,method,
                         proof["symbol_address"],
