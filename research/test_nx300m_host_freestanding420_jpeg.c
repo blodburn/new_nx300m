@@ -125,7 +125,7 @@ static void run_one(const char *module,unsigned n,unsigned order){
  assert(unlink(result)==0&&unlink(oracle)==0);
  free(lut_copy);free(lut);
  printf("PASS host row-strip JPEG: LUT=%u order=%u, byte-equal "
-        "4:2:0, EXIF=%d, no-overwrite, immutable inputs\\n",
+        "4:2:0, EXIF=%d, no-overwrite, immutable inputs\n",
         n,order,include_exif);
 }
 static void reject_cases(const char *module){
