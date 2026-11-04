@@ -379,6 +379,27 @@ jobs:
                   raise SystemExit("REJECT missing direct MOV #0 → +12 ctor proof "+v)
               if p["other_methods_plus12_matches_real_runtime_callback"]:
                   raise SystemExit("REJECT unsupported JFIF dynamic callback claim")
+              hal=p["hal_registration_pointer_field_mapping"]
+              if (hal["native_address"]!="0x00028828" or
+                  not hal["jfif_encode_callback_object_plus12_from_hal_plus8"] or
+                  hal["runtime_hal_callback_address_proven"] or
+                  hal["hardware_encode_is_third_callback_slot_proven"] or
+                  hal["camera_firmware_flash_permitted"]):
+                  raise SystemExit("REJECT incorrect real HalRegister mapping "+v)
+              copies=hal["static_arm_exact_field_copies"]
+              if [(x["tDscHal_input_field_offset"],
+                   x["dscjfif_object_field_offset"]) for x in copies]!=[
+                      (0,4),(4,8),(8,12)
+                  ] or copies[-1]["read_callback_slot_site"]!="0x0002886c" or (
+                      copies[-1]["write_jfif_slot_site"]!="0x00028874"
+                  ):
+                  raise SystemExit("REJECT tDscHal +8 to Jfif +12 not verified "+v)
+              print("PASS_FW_NATIVE_JFIF_HALREGISTER",v,
+                    "THIS_R0",hal["this_r0_stack_site"],
+                    "HAL_R1",hal["hal_pointer_r1_stack_site"],
+                    "COPIES",[(x["tDscHal_input_field_offset"],
+                               x["dscjfif_object_field_offset"]) for x in copies],
+                    "ENCODE_CALLBACK_LIVE_POINTER_UNVERIFIED")
               print("FW114_JFIF_POST_CTOR_FIELD12_WRITERS",v,
                     p["other_jfif_methods_writing_plus12"])
               print("PASS FW114/115 constructor stores NULL at object +12, "
