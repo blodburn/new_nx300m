@@ -10,6 +10,9 @@ on:
       - "research/nx300m_freestanding_owned420_bridge.c"
       - "research/nx300m_freestanding_owned420_bridge.h"
       - "research/test_nx300m_freestanding_owned420_bridge.c"
+      - "research/nx300m_host_freestanding420_jpeg.h"
+      - "research/nx300m_host_freestanding420_jpeg.c"
+      - "research/test_nx300m_host_freestanding420_jpeg.c"
       - "research/nx300m_lut_grid_host.c"
       - "research/nx300m_fw114_arm_loader_abi.py"
       - "Makefile"
@@ -22,6 +25,9 @@ on:
       - "research/nx300m_freestanding_owned420_bridge.c"
       - "research/nx300m_freestanding_owned420_bridge.h"
       - "research/test_nx300m_freestanding_owned420_bridge.c"
+      - "research/nx300m_host_freestanding420_jpeg.h"
+      - "research/nx300m_host_freestanding420_jpeg.c"
+      - "research/test_nx300m_host_freestanding420_jpeg.c"
       - "research/nx300m_lut_grid_host.c"
       - "research/nx300m_fw114_arm_loader_abi.py"
       - "Makefile"
@@ -180,5 +186,6 @@ jobs:
                 .build/test_nx300m_freestanding_lut_core_armv7 \
                 .build/test_nx300m_freestanding_owned420_bridge_armv7 \
                 .build/libnx300m_filmcore_nolibc.so \
-                .build/test_nx300m_freestanding_lut_core
+                .build/test_nx300m_freestanding_lut_core \
+                .build/test_nx300m_host_freestanding420_jpeg
           echo 'No ELF module, proprietary camera artifact or firmware uploaded.'
