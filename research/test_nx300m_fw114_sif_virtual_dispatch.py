@@ -98,6 +98,22 @@ class FirmwareVirtualDispatchTests(unittest.TestCase):
         self.assertEqual(d[0x6c1bc]["relocation_type"],"R_ARM_ABS32")
         self.assertEqual(d[0x6c1bc]["mangled_symbol"],"_ZTI7DscJfif")
 
+    def test_relocated_jpeg_callback_demangling(self):
+        # An ELF REL pointer may have no stored pointer value at all.
+        source=(
+            "0006c1c4  00020002 R_ARM_ABS32 00028a88 "
+            "_ZN7DscJfif10JpegEncodeER7sJpegOpb\n"
+            "0006c1bc  00010002 R_ARM_ABS32 0006c1c8 _ZTI7DscJfif\n"
+        )
+        targets=audit.relocation_symbol_targets(source)
+        methods=audit.jpeg_callback_relocation_witnesses(targets)
+        self.assertEqual(len(methods),1)
+        self.assertEqual(methods[0]["relocation_vaddr"],"0x0006c1c4")
+        self.assertEqual(methods[0]["symbol_value"],"0x00028a88")
+        self.assertTrue(methods[0]["target_native_symbol"].startswith(
+            "DscJfif::JpegEncode("))
+        self.assertFalse(methods[0]["live_callback_invocation_verified"])
+
     def test_relocation_target_conflict_is_rejected(self):
         text=(
             "0006c1c4  00020002 R_ARM_ABS32 00028a88 A\n"
