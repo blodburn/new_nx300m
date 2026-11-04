@@ -130,15 +130,15 @@ def arm_mov_immediate_zero(word:int,register:int)->bool:
 
 def constructor_field_store_candidates(
     path: Path, segments: list[tuple[int,int,int]],
-    symbols: dict[str,dict]
+    symbols: dict[str,dict], *,
+    prefixes: tuple[str,...]=("DscJfif::DscJfif(",
+                            "DscJPEG::DscJPEG(","DscJPEG::Instance(")
 )->list[dict]:
     """Look for [+12] assignments in *actual* JPEG instance constructors.
 
     This discovers writes, but never asserts that an arbitrary [+12] store
     initializes the DscJfif::JpegEncode callback or that constructor ran.
     """
-    prefixes=("DscJfif::DscJfif(", "DscJPEG::DscJPEG(",
-              "DscJPEG::Instance(")
     methods=[dict(info,name=name) for name,info in symbols.items()
              if info["kind"]=="FUNC" and name.startswith(prefixes)]
     methods=sorted(methods,key=lambda m:(m["address"],m["name"]))
@@ -232,6 +232,13 @@ def inspect(path:Path)->dict:
             "immediately_prior_arm_mov_zero"
         ] is True
     )
+    out["other_jfif_methods_writing_plus12"]=[
+        item for item in constructor_field_store_candidates(
+            path,segments,sym,prefixes=("DscJfif::",)
+        ) if item["function"]!="DscJfif::DscJfif()" and
+        item["stores_into_any_base_plus12"]
+    ]
+    out["other_methods_plus12_matches_real_runtime_callback"]=False
     out["dscjfif_plus12_callback_initializer_proven"]=False
     out["mirror_source_is_vendor_authenticated"]=False
     return out
