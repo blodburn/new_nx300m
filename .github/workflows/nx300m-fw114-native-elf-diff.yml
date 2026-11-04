@@ -266,6 +266,47 @@ jobs:
               print("FW_SIF_TASKMAIN_DIRECT_ARM_BL",v,
                     a["taskmain_direct_arm_bl_count"],
                     "JPEG_NAMES",a["taskmain_direct_resolved_jpeg_edges"])
+              expected_captures={
+                  "_ZN7DscJfif9JpegParseER7sJpegOp":"0x0002acbc",
+                  "_ZN7DscJfif10JpegDecodeER7sJpegOp":"0x0002ad04",
+                  "_ZN7DscJfif10JpegEncodeER7sJpegOpb":"0x0002ad5c",
+              }
+              observed={
+                  edge["target_symbol"]:edge["callsite"]
+                  for edge in a["taskmain_direct_resolved_jpeg_edges"]
+                  if edge["target_kind"]=="import"
+              }
+              if not all(observed.get(name)==site for name,site in
+                         expected_captures.items()):
+                  raise SystemExit("REJECT "+v+
+                       " missing exact TaskMain BL->PLT jpeg parse/decode/encode")
+              jfif=a["indirect_elf_functions"]["DscJfif::JpegEncode("]
+              jfif_calls=jfif["sites"]
+              if len(jfif_calls)!=1 or (
+                  jfif_calls[0]["branch_kind"]!="BLX_register"
+              ) or jfif_calls[0]["register"]!="r6" or (
+                  jfif_calls[0]["site_address"]!="0x00028c18"
+              ):
+                  raise SystemExit("REJECT "+v+" missing JpegEncode indirect BLX")
+              writers=jfif_calls[0]["prior_register_writer_candidates"]
+              if not any(w["kind"]=="LDR_immediate" and (
+                  w["source_register"]=="r3"
+              ) and w["source_byte_offset"]==12 for w in writers):
+                  raise SystemExit("REJECT "+v+" missing r6 source +0x0C candidate")
+              if a["recognized_methods"]["DscJfif::JpegEncode("][
+                  "vtable_matching_slot_offsets"
+              ]:
+                  raise SystemExit("REJECT "+v+" unexpected direct JpegEncode vtable")
+              callbacks=a["jpeg_related_relocation_targets"]
+              if not any(x["relocation_type"]=="R_ARM_GLOB_DAT" and (
+                  x["relocation_vaddr"]=="0x0006ce98"
+              ) and x["target_native_symbol"].startswith(
+                  "DscJfifHal::Encode("
+              ) for x in callbacks):
+                  raise SystemExit("REJECT "+v+" missing HAL encode GOT witness")
+              print("PASS_FW114_NATIVE_TASKMAIN_TO_JFIF_ENCODE",v,
+                    "3 exact PLT callsites; JpegEncode r6 +0x0C indirect;"
+                    " HAL Encode GOT reference; runtime target NOT PROVEN")
               for rel in a["jpeg_related_relocation_targets"]:
                   print("FW_SIF_RELOCATED_JPEG_CALLBACK",v,
                         rel["relocation_vaddr"],
