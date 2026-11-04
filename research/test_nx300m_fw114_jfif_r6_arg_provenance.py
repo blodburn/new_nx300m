@@ -26,6 +26,7 @@ class ARMJpegArgProvenanceTests(unittest.TestCase):
         self.assertEqual(r["r6_field_load_site"],f"0x{START+12:08x}")
         self.assertEqual(r["blx_register_site"],f"0x{START+16:08x}")
         self.assertTrue(r["incoming_sJpegOp_r1_saved_to_slot_candidate"])
+        self.assertFalse(r["incoming_object_this_r0_saved_to_slot_candidate"])
         self.assertFalse(r["incoming_arg_r1_is_live_sJpegOp_proven"])
         self.assertFalse(r["indirect_call_runtime_target_proven"])
         self.assertFalse(r["hal_encode_target_proven"])
@@ -36,6 +37,8 @@ class ARMJpegArgProvenanceTests(unittest.TestCase):
         words[1]=0xe50b0030
         r=prov.select_provenance(words,START)
         self.assertFalse(r["incoming_sJpegOp_r1_saved_to_slot_candidate"])
+        self.assertTrue(r["incoming_object_this_r0_saved_to_slot_candidate"])
+        self.assertFalse(r["cpp_aapcs_this_pointer_runtime_identity_proven"])
         self.assertEqual(r["stack_slot_store_candidates"][0]["source_register"],"r0")
 
     def test_two_aliasing_stack_writes_never_claim_incoming_r1(self):
