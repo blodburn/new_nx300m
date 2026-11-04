@@ -5,7 +5,7 @@ BASE = nx300m_host_capture_copy_adapter nx300m_picture_wizard_route_guard nx300m
 SOURCES = $(addprefix research/,$(addsuffix .c,$(BASE)))
 TESTS = linear_prejpeg bayer_prejpeg bayer_row_emit host_jpeg_sink host_native420_bridge host_420_film_jpeg host420_ref_gate host_ycc420_probe tizen_film_controller tizen_keymap picture_wizard_route_guard host_capture_copy_adapter shutter_jpeg_bridge camera_style_response film_menu lut18_text_io lut_grid_host host_lutgrid_jpeg host420_lutgrid_jpeg image_enhance still_pipeline capture_bridge film_pixel_e2e
 BENCH_SOURCES = research/nx300m_host_native420_bridge.c research/nx300m_cycc_layout.c research/nx300m_host_jpeg_sink.c research/nx300m_bayer_prejpeg.c research/nx300m_camera_style_response.c research/nx300m_linear_prejpeg.c research/nx300m_film_menu.c research/nx300m_lut18.c research/nx300m_look_builder.c research/nx300m_preview_rgb.c
-.PHONY: jpeg-exif-test capture-evidence-test freestanding-test test bench bench-lut65 bench-host420-lut65 probe multimodel-test multimodel-probe efl-check efl-runtime-test tizen-efl film-proof clean
+.PHONY: full20mp-test jpeg-exif-test capture-evidence-test freestanding-test test bench bench-lut65 bench-host420-lut65 probe multimodel-test multimodel-probe efl-check efl-runtime-test tizen-efl film-proof clean
 test: multimodel-test
 	@mkdir -p .build outputs
 	@set -e; for t in $(TESTS); do \
@@ -120,6 +120,16 @@ clean:
 
 # Host-only no-libc C kernel. Program harness uses host libc/dlopen;
 # libnx300m_filmcore_nolibc.so is linked WITHOUT libc/crt/libgcc.
+full20mp-test: freestanding-test
+	$(CC) -std=c11 -O2 -Wall -Wextra -Werror -Iresearch \
+	  research/test_nx300m_full20mp_stream_exif.c \
+	  research/nx300m_host_freestanding420_jpeg.c \
+	  research/nx300m_host_jpeg_sink.c \
+	  research/nx300m_preview_rgb.c \
+	  research/nx300m_lut18.c -ldl -lm \
+	  -o .build/test_nx300m_full20mp_stream_exif
+	@python3 research/test_nx300m_full20mp_stream_exif.py
+
 freestanding-test:
 	@mkdir -p .build outputs
 	$(CC) -std=c11 -O2 -Wall -Wextra -Werror \
