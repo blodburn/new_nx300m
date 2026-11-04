@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import sys
+import struct
+import tempfile
 from pathlib import Path
 import unittest
 
@@ -64,6 +66,33 @@ class ARMJpegArgProvenanceTests(unittest.TestCase):
         words.insert(3,0xe51b302c)
         with self.assertRaisesRegex(ValueError,"ambiguous"):
             prov.select_provenance(words,START)
+
+    def test_offline_constructor_member_store_is_only_syntax(self):
+        # An isolated synthetic function is not a firmware loader or camera.
+        with tempfile.TemporaryDirectory() as directory:
+            fn=Path(directory)/"synthetic_code.bin"
+            fn.write_bytes(struct.pack(
+                "<III",0xe580100c,0xe583200c,0xe12fff1e
+            ))
+            info={
+                "DscJPEG::DscJPEG()":{
+                    "address":0x1000,"size":12,"kind":"FUNC",
+                },
+            }
+            values=prov.constructor_field_store_candidates(
+                fn,[(0x1000,12,0)],info
+            )
+            self.assertEqual(len(values),1)
+            stores=values[0]["stores_into_any_base_plus12"]
+            self.assertEqual(len(stores),2)
+            self.assertEqual(
+                [s["value_register"] for s in stores],["r1","r2"]
+            )
+            self.assertEqual(
+                [s["base_register"] for s in stores],["r0","r3"]
+            )
+            self.assertFalse(values[0]["callback_assignment_proven"])
+            self.assertFalse(values[0]["actual_dscjfif_this_object_proven"])
 
     def test_word_decoder_rejects_byte_postindexed_and_ldr_register(self):
         d=prov.decode_mem_word(0xe51b3030)
