@@ -13,6 +13,7 @@
 #include <string.h>
 
 typedef int (*render_fn)(const nx_film_owned420_hypothesis_job*);
+typedef int (*rows_fn)(const nx_film_owned420_hypothesis_job*,unsigned,unsigned);
 static uint8_t sat8(int v){return (uint8_t)(v<0?0:v>255?255:v);}
 static void reference_decode(unsigned lum,unsigned cb,unsigned cr,uint8_t rgb[3]){
  const int dcb=(int)cb-128,dcr=(int)cr-128;
@@ -43,7 +44,8 @@ static void reference(const nx_film_owned420_hypothesis_job *j,uint8_t *dst){
   }
  }
 }
-static void test_one(render_fn render,unsigned grid,unsigned order){
+static void test_one(render_fn render,rows_fn render_rows,
+                     unsigned grid,unsigned order){
  enum { W=12,H=8,YSTRIDE=16,CSTRIDE=18,RSTRIDE=42 };
  const size_t count=(size_t)grid*grid*grid;
  nx_rgb12 *lut=malloc(count*sizeof(*lut));
@@ -92,6 +94,51 @@ static void test_one(render_fn render,unsigned grid,unsigned order){
  reference(&j,expected);
  assert(render(&j)==0);
  assert(memcmp(output,expected,sizeof(output))==0);
+ /* A single-row output uses only the caller's small RGB stripe, while
+  * chroma index is always computed from the GLOBAL image row number.
+  * Odd first_row and partial final stripe are intentional regressions.
+  */
+ uint8_t striped[RSTRIDE*H],striped_before[RSTRIDE*H];
+ nx_film_owned420_hypothesis_job r=j;
+ memset(striped,0xcc,sizeof(striped));
+ for(unsigned first=0;first<H;first++){
+  r.rgb=striped+(size_t)first*RSTRIDE;
+  r.rgb_bytes=W*3u;
+  assert(render_rows(&r,first,1u)==0);
+ }
+ assert(memcmp(striped,expected,sizeof(striped))==0);
+ memset(striped,0xcc,sizeof(striped));
+ for(unsigned first=0;first<H;first+=3u){
+  const unsigned count=H-first<3u?H-first:3u;
+  r.rgb=striped+(size_t)first*RSTRIDE;
+  r.rgb_bytes=(size_t)(count-1u)*RSTRIDE+W*3u;
+  assert(render_rows(&r,first,count)==0);
+ }
+ assert(memcmp(striped,expected,sizeof(striped))==0);
+ memset(striped,0xcc,sizeof(striped));
+ memcpy(striped_before,striped,sizeof(striped));
+ for(unsigned bad=0;bad<9u;bad++){
+  unsigned first=1u,rows=1u;
+  r=j;
+  r.rgb=striped;
+  r.rgb_bytes=sizeof(striped);
+  switch(bad){
+   case 0:first=H;break;
+   case 1:rows=0u;break;
+   case 2:first=H-1u;rows=2u;break;
+   case 3:r.rgb_bytes=W*3u-1u;break;
+   case 4:r.rgb=(uint8_t*)j.y;break;
+   case 5:r.rgb=(uint8_t*)j.chroma;break;
+   case 6:r.hypothesis=0u;break;
+   case 7:r.height=H-1u;break;
+   case 8:r.decode_entries=0u;break;
+  }
+  assert(render_rows(&r,first,rows)==-1);
+  assert(memcmp(striped,striped_before,sizeof(striped))==0);
+ }
+ /* Failed row jobs must not corrupt immutable input planes either. */
+ assert(memcmp(y,yoriginal,sizeof(y))==0);
+ assert(memcmp(c,coriginal,sizeof(c))==0);
  assert(memcmp(y,yoriginal,sizeof(y))==0);
  assert(memcmp(c,coriginal,sizeof(c))==0);
  for(unsigned row=0;row<H;row++)
@@ -123,8 +170,8 @@ static void test_one(render_fn render,unsigned grid,unsigned order){
  assert(memcmp(c,coriginal,sizeof(c))==0);
  free(lut);
  printf("PASS owned420 GLIBC-free bridge: grid=%u order=%u, "
-        "96 synthetic pixels, exact host color parity, guard + padding + "
-        "read-only planes\n",grid,order);
+        "96 synthetic pixels, exact host parity, one-row and three-row "
+        "stripes, invalid spans + padding + read-only planes\n",grid,order);
 }
 int main(int argc,char **argv){
  assert(argc==2);
@@ -136,12 +183,15 @@ int main(int argc,char **argv){
  void *pointer=dlsym(h,"nx_film_core_render_owned420_hypothesis");
  assert(pointer);
  render_fn render=(render_fn)pointer;
+ pointer=dlsym(h,"nx_film_core_render_owned420_rows_hypothesis");
+ assert(pointer);
+ rows_fn render_rows=(rows_fn)pointer;
  for(unsigned grid=2u;grid<=65u;grid=(grid==2u?18u:66u))
   for(unsigned order=1u;order<=2u;order++)
-   test_one(render,grid,order);
+   test_one(render,render_rows,grid,order);
  /* Test 65-grid separately (loop above is bounded, explicit). */
  for(unsigned order=1u;order<=2u;order++)
-  test_one(render,65u,order);
+  test_one(render,render_rows,65u,order);
  assert(dlclose(h)==0);
  puts("PASS GLIBC-FREE owned Y/C420 copy hypothesis -> RGB12 LUT "
       "-> RGB888; no camera ISP/JPEG claims");
