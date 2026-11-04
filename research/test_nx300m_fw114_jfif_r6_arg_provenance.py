@@ -67,6 +67,41 @@ class ARMJpegArgProvenanceTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,"ambiguous"):
             prov.select_provenance(words,START)
 
+    def test_three_tDscHal_slots_to_instance_exact_arm_copies(self):
+        words=[
+            0xe50b0008, # str r0,[fp,#-8] this
+            0xe50b100c, # str r1,[fp,#-12] tDscHal*
+            0xe51b300c,0xe5932000,0xe51b3008,0xe5832004,
+            0xe51b300c,0xe5932004,0xe51b3008,0xe5832008,
+            0xe51b300c,0xe5932008,0xe51b3008,0xe583200c,
+        ]
+        result=prov.decode_hal_registration_words(words,0x28828)
+        pairs=result["static_arm_exact_field_copies"]
+        self.assertEqual(
+            [(x["tDscHal_input_field_offset"],x["dscjfif_object_field_offset"])
+             for x in pairs],[(0,4),(4,8),(8,12)]
+        )
+        self.assertTrue(result["jfif_encode_callback_object_plus12_from_hal_plus8"])
+        self.assertFalse(result["runtime_hal_callback_address_proven"])
+        self.assertFalse(result["hardware_encode_is_third_callback_slot_proven"])
+        self.assertFalse(result["camera_firmware_flash_permitted"])
+
+    def test_hal_register_swapped_slots_or_missing_arg_reject(self):
+        words=[
+            0xe50b0008,0xe50b100c,
+            0xe51b300c,0xe5932000,0xe51b3008,0xe5832004,
+            0xe51b300c,0xe5932004,0xe51b3008,0xe5832008,
+            0xe51b300c,0xe5932008,0xe51b3008,0xe583200c,
+        ]
+        wrong=words.copy()
+        wrong[11]=0xe5932004
+        with self.assertRaisesRegex(ValueError,"field copy"):
+            prov.decode_hal_registration_words(wrong,0x28828)
+        wrong=words.copy()
+        wrong[1]=0xe50b200c
+        with self.assertRaisesRegex(ValueError,"stack arguments"):
+            prov.decode_hal_registration_words(wrong,0x28828)
+
     def test_offline_constructor_member_store_is_only_syntax(self):
         # An isolated synthetic function is not a firmware loader or camera.
         with tempfile.TemporaryDirectory() as directory:
