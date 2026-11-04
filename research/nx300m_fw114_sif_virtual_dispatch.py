@@ -202,6 +202,30 @@ def load_chain(words:list[int],ix:int,reg:int)->dict:
     }
 
 
+def register_writer_candidates(words:list[int],site:int,register:int)->list[dict]:
+    """Find syntactic writes in file order, NOT execution-order provenance."""
+    found=[]
+    for i in range(site):
+        op=words[i]
+        ld=decode_ldr_immediate(op)
+        if ld and ld["dst"]==register:
+            found.append({
+                "word_index":i,"opcode":"0x%08x"%op,
+                "kind":"LDR_immediate",
+                "source_register":"r%d"%ld["base"],
+                "source_byte_offset":ld["offset"],
+            })
+        elif ((op>>28)!=15 and (op&0x0fe0fff0)==0x01a00000 and (
+            (op>>12)&15)==register):
+            found.append({
+                "word_index":i,"opcode":"0x%08x"%op,
+                "kind":"MOV_register",
+                "source_register":"r%d"%(op&15),
+                "source_byte_offset":None,
+            })
+    return found[-8:]
+
+
 def scan_indirect(
     data:bytes, loads:list[tuple[int,int,int]], addr:int, size:int
 )->dict:
@@ -227,6 +251,13 @@ def scan_indirect(
             "branch_kind":kind,
             "register":"r"+str(reg),
             **load_chain(list(words),i,reg),
+            "preceding_arm_words":[
+                {"relative_pc_offset":p*4,"opcode":"0x%08x"%words[p]}
+                for p in range(max(0,i-8),i)
+            ],
+            "prior_register_writer_candidates":
+                register_writer_candidates(list(words),i,reg),
+            "provenance_control_flow_reconstructed":False,
         })
     return {
         **summary,
