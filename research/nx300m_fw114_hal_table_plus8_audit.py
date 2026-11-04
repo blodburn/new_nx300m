@@ -62,7 +62,7 @@ def candidate_mem_store_sites(
     return found
 
 
-def native_method(path:Path, segments:list[tuple[int,int,int]],
+def native_method(path:Path, image:bytes, segments:list[tuple[int,int,int]],
                   symbols:dict[str,dict],prefix:str,
                   defined:dict[int,str],relocs:dict[int,str]) -> dict:
     fn=sif.select(symbols,prefix,"FUNC")
@@ -75,9 +75,9 @@ def native_method(path:Path, segments:list[tuple[int,int,int]],
     if len(raw)!=size:
         raise ValueError("SIF ARM body truncated")
     words=struct.unpack("<"+"I"*(size//4),raw)
-    edges=graph.collect_edges(raw,[(addr,size,0)],addr,size,
+    edges=graph.collect_edges(image,segments,addr,size,
                               defined,relocs)
-    # graph.collect_edges expects the exact code address and its local PT_LOAD
+    # PLT stubs and GOT relocations require the complete version-local ELF.
     return {
         "native_symbol":fn["name"],
         "function_address":"0x%08x"%addr,
@@ -115,7 +115,7 @@ def inspect(path:Path)->dict:
         raise ValueError("Missing or ambiguous HAL Encode relocated symbol witness")
     focus={}
     for prefix in METHODS:
-        focus[prefix]=native_method(path,segments,symbols,prefix,defined,relocs)
+        focus[prefix]=native_method(path,data,segments,symbols,prefix,defined,relocs)
     ctor=focus["DscJPEG::DscJPEG(unsigned long"]
     instance=focus["DscJPEG::Instance("]
     def evidence(data:dict)->list[dict]:
