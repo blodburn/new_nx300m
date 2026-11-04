@@ -452,6 +452,13 @@ jobs:
                         "ARMBL",entry["direct_bl_candidates"],
                         "CALLS",entry["identified_direct_calls"],
                         "PLUS8_WRITES",entry["direct_plus8_store_candidates"])
+                  for window in entry["hal_instance_call_argument_windows"]:
+                      print("FW_NATIVE_HAL_INSTANCE_ARG_R3",v,name,
+                            window["native_callsite"],
+                            "WORDS",window["preceding_arm_words"],
+                            "R3_WRITERS",window["r3_candidates_before_call"],
+                            "LIVE_VALUE_PROVEN",window[
+                                "fourth_argument_r3_value_determined"])
               print("FW_HAL_ENCODER_INDEPENDENT_GOT",v,
                     a["hal_encoder_native_address"],globs,
                     "UPSTREAM_TABLE_VALUE_NOT_VERIFIED")
