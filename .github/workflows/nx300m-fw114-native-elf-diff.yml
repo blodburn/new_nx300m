@@ -19,6 +19,8 @@ on:
       - 'research/test_nx300m_fw114_jfif_r6_arg_provenance.py'
       - 'research/nx300m_fw114_hal_table_plus8_audit.py'
       - 'research/test_nx300m_fw114_hal_table_plus8_audit.py'
+      - 'research/nx300m_fw114_photo_ycc_copy_boundary.py'
+      - 'research/test_nx300m_fw114_photo_ycc_copy_boundary.py'
       - 'research/test_nx300m_fw114_capture_jpeg_route.py'
       - 'research/test_nx300m_fw114_function_proofs.py'
       - 'research/test_nx300m_fw114_native_elf_diff.py'
@@ -42,6 +44,8 @@ on:
       - 'research/test_nx300m_fw114_jfif_r6_arg_provenance.py'
       - 'research/nx300m_fw114_hal_table_plus8_audit.py'
       - 'research/test_nx300m_fw114_hal_table_plus8_audit.py'
+      - 'research/nx300m_fw114_photo_ycc_copy_boundary.py'
+      - 'research/test_nx300m_fw114_photo_ycc_copy_boundary.py'
       - 'research/test_nx300m_fw114_capture_jpeg_route.py'
       - 'research/test_nx300m_fw114_function_proofs.py'
       - 'research/test_nx300m_fw114_native_elf_diff.py'
@@ -73,6 +77,7 @@ jobs:
           python3 research/test_nx300m_fw114_sif_virtual_dispatch.py
           python3 research/test_nx300m_fw114_jfif_r6_arg_provenance.py
           python3 research/test_nx300m_fw114_hal_table_plus8_audit.py
+          python3 research/test_nx300m_fw114_photo_ycc_copy_boundary.py
           python3 research/test_nx300m_fw114_binary_delta.py
 
       - name: Install pinned offline UBI reader in ephemeral venv
@@ -511,6 +516,38 @@ jobs:
                     "UPSTREAM_TABLE_VALUE_NOT_VERIFIED")
           print("PASS real FW1.14/1.15 JPEG HAL constructor and Instance static "
                 "field+8 writer investigation; runtime still NO-GO")
+          buffer=report["fw114_photo_ycc_copy_boundary"]
+          if (not buffer["photo_elf_sha256_equal"] or
+              not buffer["photo_native_method_code_equal"] or
+              buffer["real_device_ycc_buffer_provenance_known"] or
+              buffer["camera_firmware_flash_permitted"]):
+              raise SystemExit("REJECT false YCC camera buffer source proof")
+          for v in ("fw114","fw115"):
+              y=buffer[v]
+              if y["native_getters_and_encode_method_count"]!=8 or (
+                  not y["native_blockcopy_overloads_present"]
+              ) or y["encoder_owned_copy_and_DMA_lifetime_proven"] or (
+                  y["Y0_Y1_C0_C1_runtime_sample_verified"]
+              ) or y["film_engine_native_insertion_point_safe"] or (
+                  y["camera_patch_or_flash_permitted"]
+              ):
+                  raise SystemExit("REJECT unsafe YCC native source proof")
+              for method,proof in y["native_methods"].items():
+                  print("FW114_NATIVE_YCC_COPY_METHOD",v,method,
+                        proof["symbol_address"],
+                        "ARM_BL",proof["direct_bl_candidates"],
+                        "EDGES",proof["source_bl_calls"],
+                        "COPY_LIKE",proof["named_copy_like_call_edges"])
+              getter=y["native_methods"][
+                  "CMmDeviceDriver::EncodeYcc("
+              ]["validated_ycc_getter_to_encoder_order"]
+              for item in getter:
+                  print("FW114_NATIVE_ENCODEYCC_GETTER_WINDOW",v,
+                        item["expected_native_method"],
+                        item["callsite"],
+                        "ARM",item["bounded_arm_instruction_window"])
+          print("PASS real 1.14/1.15 photo YCC pointer-getter and copy-call "
+                "static analysis; no DMA ownership or safe film hook verified")
           print('PASS native ELF FW114/115 file-hash and sampled-symbol delta report')
           PY
 
