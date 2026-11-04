@@ -121,6 +121,58 @@ def select_provenance(words: list[int], start: int) -> dict:
     }
 
 
+def constructor_field_store_candidates(
+    path: Path, segments: list[tuple[int,int,int]],
+    symbols: dict[str,dict]
+)->list[dict]:
+    """Look for [+12] assignments in *actual* JPEG instance constructors.
+
+    This discovers writes, but never asserts that an arbitrary [+12] store
+    initializes the DscJfif::JpegEncode callback or that constructor ran.
+    """
+    prefixes=("DscJfif::DscJfif(", "DscJPEG::DscJPEG(",
+              "DscJPEG::Instance(")
+    methods=[dict(info,name=name) for name,info in symbols.items()
+             if info["kind"]=="FUNC" and name.startswith(prefixes)]
+    methods=sorted(methods,key=lambda m:(m["address"],m["name"]))
+    if not methods or len(methods)>24:
+        raise ValueError("Missing or ambiguous bounded JPEG constructor inventory")
+    output=[]
+    with path.open("rb") as stream:
+        for func in methods:
+            address=func["address"];size=func["size"]
+            if address&3 or size&3 or not 4<=size<=4096:
+                continue
+            off=elf.file_range_for_vaddr(segments,address,size)
+            stream.seek(off)
+            blob=stream.read(size)
+            if len(blob)!=size:
+                raise ValueError("Truncated JPEG constructor ARM body")
+            words=struct.unpack("<"+"I"*(size//4),blob)
+            stores=[]
+            for i,op in enumerate(words):
+                info=decode_mem_word(op)
+                if (info and info["kind"]=="STR" and
+                    info["offset"]==FIELD_BYTE_OFFSET):
+                    if len(stores)>=30:
+                        raise ValueError("Unbounded [+12] constructor stores")
+                    stores.append({
+                        "site":"0x%08x"%(address+4*i),
+                        "base_register":"r"+str(info["base_register"]),
+                        "value_register":"r"+str(info["data_register"]),
+                        "condition_arm":info["condition"],
+                    })
+            output.append({
+                "function":func["name"][:180],
+                "address":"0x%08x"%address,
+                "function_bytes":size,
+                "stores_into_any_base_plus12":stores,
+                "actual_dscjfif_this_object_proven":False,
+                "callback_assignment_proven":False,
+            })
+    return output
+
+
 def inspect(path:Path)->dict:
     if path.is_symlink() or not path.is_file():
         raise ValueError("Missing private regular libsif ELF")
@@ -140,6 +192,10 @@ def inspect(path:Path)->dict:
         raise ValueError("Truncated native function body")
     values=list(struct.unpack("<"+"I"*(size//4),content))
     out=select_provenance(values,address)
+    out["jpeg_constructor_field_store_inventory"]=constructor_field_store_candidates(
+        path,segments,sym
+    )
+    out["dscjfif_plus12_callback_initializer_proven"]=False
     out["mirror_source_is_vendor_authenticated"]=False
     return out
 
