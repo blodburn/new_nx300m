@@ -60,6 +60,49 @@ class NativeYccBufferBoundaryTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,"getter return"):
             audit.validate_jpeg_abi_marshal(tuple(words),start)
 
+    def test_native_aapcs_jpeg_stack_args_and_corrupt_strides(self):
+        start=0x34b18
+        code=[0xe1a00000]*((0x34d78-start)//4+1)
+        from_known={
+            0x34d20:0xe58d9000,
+            0x34d24:0xe3a02000,
+            0x34d28:0xe58d2004,
+            0x34d2c:0xe3a02000,
+            0x34d30:0xe58d2008,
+            0x34d34:0xe51b2068,
+            0x34d38:0xe58d200c,
+            0x34d3c:0xe58da010,
+            0x34d40:0xe58d8014,
+            0x34d44:0xe58d3018,
+            0x34d48:0xe51b3028,
+            0x34d4c:0xe58d301c,
+            0x34d50:0xe51b302c,
+            0x34d54:0xe58d3020,
+            0x34d58:0xe3a03002,
+            0x34d5c:0xe58d3024,
+            0x34d60:0xe3a03e7d,
+            0x34d64:0xe58d3028,
+        }
+        for address,word in from_known.items():
+            code[(address-start)//4]=word
+        got=audit.validate_native_ycc_jpeg_stack_args(tuple(code),start)
+        self.assertEqual(got["stack_parameter_count"],11)
+        self.assertEqual(got["DscImage_EncodeYCC_stack_args"][0][
+            "native_abi_arg"],"C1")
+        self.assertEqual(got["DscImage_EncodeYCC_stack_args"][6][
+            "native_abi_arg"],"Stride")
+        self.assertEqual(got["code_confirmed_immediate_quality"],2)
+        self.assertEqual(got["code_confirmed_last_integer"],2000)
+        self.assertFalse(got["raw_DMA_buffer_copy_safe"])
+        damaged=code.copy()
+        damaged[(0x34d44-start)//4]=0xe58d3014
+        with self.assertRaisesRegex(ValueError,"stack argument"):
+            audit.validate_native_ycc_jpeg_stack_args(tuple(damaged),start)
+        damaged=code.copy()
+        damaged[(0x34d60-start)//4]=0xe3a03e7c
+        with self.assertRaisesRegex(ValueError,"stack source"):
+            audit.validate_native_ycc_jpeg_stack_args(tuple(damaged),start)
+
     def test_unbounded_method_or_non_arm_function_rejects(self):
         import struct
         words=struct.pack("<II",0xe1a00000,0xe12fff1e)
