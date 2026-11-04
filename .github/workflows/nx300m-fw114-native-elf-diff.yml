@@ -436,6 +436,7 @@ jobs:
                   a["firmware_install_or_flash_permitted"]):
                   raise SystemExit("REJECT unsafe HAL runtime proof")
               expected=("DscJfif::HalRegister(",
+                        "DscImage::DscJpegInstance(",
                         "DscJPEG::DscJPEG(unsigned long",
                         "DscJPEG::Instance(","DscJfif::DscJfif()")
               if set(a["method_evidence"])!=set(expected):
