@@ -13,6 +13,7 @@
 #include <string.h>
 
 typedef int (*render_fn)(const nx_film_owned420_hypothesis_job*);
+typedef int (*rows_fn)(const nx_film_owned420_hypothesis_job*,unsigned,unsigned);
 static uint8_t sat8(int v){return (uint8_t)(v<0?0:v>255?255:v);}
 static void reference_decode(unsigned lum,unsigned cb,unsigned cr,uint8_t rgb[3]){
  const int dcb=(int)cb-128,dcr=(int)cr-128;
@@ -43,7 +44,8 @@ static void reference(const nx_film_owned420_hypothesis_job *j,uint8_t *dst){
   }
  }
 }
-static void test_one(render_fn render,unsigned grid,unsigned order){
+static void test_one(render_fn render,rows_fn render_rows,
+                     unsigned grid,unsigned order){
  enum { W=12,H=8,YSTRIDE=16,CSTRIDE=18,RSTRIDE=42 };
  const size_t count=(size_t)grid*grid*grid;
  nx_rgb12 *lut=malloc(count*sizeof(*lut));
@@ -92,6 +94,49 @@ static void test_one(render_fn render,unsigned grid,unsigned order){
  reference(&j,expected);
  assert(render(&j)==0);
  assert(memcmp(output,expected,sizeof(output))==0);
+ /* A single-row output uses only the caller's small RGB stripe, while
+  * chroma index is always computed from the GLOBAL image row number.
+  * Odd first_row and partial final stripe are intentional regressions.
+  */
+ uint8_t striped[RSTRIDE*H],striped_before[RSTRIDE*H];
+ nx_film_owned420_hypothesis_job r=j;
+ memset(striped,0xcc,sizeof(striped));
+ for(unsigned first=0;first<H;first++){
+  r.rgb=striped+(size_t)first*RSTRIDE;
+  r.rgb_bytes=W*3u;
+  assert(render_rows(&r,first,1u)==0);
+ }
+ assert(memcmp(striped,expected,sizeof(striped))==0);
+ memset(striped,0xcc,sizeof(striped));
+ for(unsigned first=0;first<H;first+=3u){
+  const unsigned count=H-first<3u?H-first:3u;
+  r.rgb=striped+(size_t)first*RSTRIDE;
+  r.rgb_bytes=(size_t)(count-1u)*RSTRIDE+W*3u;
+  assert(render_rows(&r,first,count)==0);
+ }
+ assert(memcmp(striped,expected,sizeof(striped))==0);
+ memset(striped,0xcc,sizeof(striped));
+ memcpy(striped_before,striped,sizeof(striped));
+ for(unsigned bad=0;bad<9u;bad++){
+  unsigned first=1u,rows=1u;
+  r=j;
+  r.rgb=striped;
+  r.rgb_bytes=sizeof(striped);
+  switch(bad){
+   case 0:first=H;break;
+   case 1:rows=0u;break;
+   case 2:first=H-1u;rows=2u;break;
+   case 3:r.rgb_bytes=W*3u-1u;break;
+   case 4:r.rgb=(uint8_t*)j.y;break;
+   case 5:r.rgb=(uint8_t*)j.chroma;break;
+   case 6:r.hypothesis=0u;break;
+   case 7:r.height=H-1u;break;
+   case 8:r.decode_entries=0u;break;
+  }
+  assert(render_rows(&r,first,rows)==-1);
+  assert(memcmp(striped,striped_before,sizeof(striped))==0);
+ }
+ /* Failed row jobs must not corrupt immutable input planes either. */
  assert(memcmp(y,yoriginal,sizeof(y))==0);
  assert(memcmp(c,coriginal,sizeof(c))==0);
  for(unsigned row=0;row<H;row++)
@@ -123,9 +168,69 @@ static void test_one(render_fn render,unsigned grid,unsigned order){
  assert(memcmp(c,coriginal,sizeof(c))==0);
  free(lut);
  printf("PASS owned420 GLIBC-free bridge: grid=%u order=%u, "
-        "96 synthetic pixels, exact host color parity, guard + padding + "
-        "read-only planes\n",grid,order);
+        "96 synthetic pixels, exact host parity, one-row and three-row "
+        "stripes, invalid spans + padding + read-only planes\n",grid,order);
 }
+/* 20.6MP geometry gate: bounded one-row RGB output, not a camera
+ * memory benchmark or a claim about NX300M native strides/format.
+ */
+static void test_full_geometry(rows_fn render_rows){
+ enum { W=5546,H=3714,PAD=8 };
+ const size_t yn=(size_t)W*H,cn=yn/2u;
+ const size_t stride=(size_t)W*3u+PAD;
+ uint8_t *y=malloc(yn),*c=malloc(cn),*rgb=malloc(stride);
+ assert(y&&c&&rgb);
+ memset(y,111,yn);
+ memset(c,151,cn);
+ nx_rgb12 lut[8];
+ for(unsigned b=0;b<2u;b++)
+  for(unsigned g=0;g<2u;g++)
+   for(unsigned r=0;r<2u;r++){
+    const size_t k=(size_t)b*4u+(size_t)g*2u+r;
+    lut[k]=(nx_rgb12){r?4095u:0u,g?4095u:0u,b?4095u:0u,0u};
+   }
+ nx_preview_processor preview;
+ assert(nx_preview_init(&preview)==0);
+ nx_film_owned420_hypothesis_job j={
+    .copy_declaration=NX_FILM_420_COPY_DECLARATION,
+    .hypothesis=NX_FILM_BT601_FULL_CBCR_HYPOTHESIS,
+    .y=y,.y_bytes=yn,.y_stride=W,
+    .chroma=c,.chroma_bytes=cn,.chroma_stride=W,
+    .width=W,.height=H,
+    .decode_srgb=preview.decode_srgb,.decode_entries=256u,
+    .encode_srgb=preview.encode_srgb,.encode_entries=4096u,
+    .lut=lut,.lut_nodes=8u,.grid=2u,
+    .rgb=rgb,.rgb_bytes=stride,.rgb_stride=stride,
+ };
+ uint8_t decoded[3];
+ reference_decode(111u,151u,151u,decoded);
+ nx_rgb12 in={preview.decode_srgb[decoded[0]],
+              preview.decode_srgb[decoded[1]],
+              preview.decode_srgb[decoded[2]],0u},out;
+ assert(nx_lut_grid_host_apply(lut,2u,&in,&out,1u)==0);
+ const uint8_t want[3]={preview.encode_srgb[out.r],
+                         preview.encode_srgb[out.g],
+                         preview.encode_srgb[out.b]};
+ const unsigned rows[]={0u,1u,H-2u,H-1u};
+ for(unsigned k=0;k<sizeof(rows)/sizeof(rows[0]);k++){
+  memset(rgb,0xcc,stride);
+  assert(render_rows(&j,rows[k],1u)==0);
+  for(unsigned x=0;x<W;x++)
+   for(unsigned ch=0;ch<3u;ch++)
+    assert(rgb[(size_t)x*3u+ch]==want[ch]);
+  for(size_t x=(size_t)W*3u;x<stride;x++)
+   assert(rgb[x]==0xccu);
+ }
+ memset(rgb,0xcc,stride);
+ j.rgb_bytes=(size_t)W*3u-1u;
+ assert(render_rows(&j,H-1u,1u)==-1);
+ for(size_t x=0;x<stride;x++)assert(rgb[x]==0xccu);
+ assert(y[0]==111u&&y[yn-1u]==111u&&c[0]==151u&&c[cn-1u]==151u);
+ free(rgb);free(c);free(y);
+ printf("PASS owned420 5546x3714: full geometry, 16638-byte output row, "
+        "first/last odd/even indices, stride guards and fail-closed bounds\n");
+}
+
 int main(int argc,char **argv){
  assert(argc==2);
  void *h=dlopen(argv[1],RTLD_NOW|RTLD_LOCAL);
@@ -136,12 +241,16 @@ int main(int argc,char **argv){
  void *pointer=dlsym(h,"nx_film_core_render_owned420_hypothesis");
  assert(pointer);
  render_fn render=(render_fn)pointer;
+ pointer=dlsym(h,"nx_film_core_render_owned420_rows_hypothesis");
+ assert(pointer);
+ rows_fn render_rows=(rows_fn)pointer;
+ test_full_geometry(render_rows);
  for(unsigned grid=2u;grid<=65u;grid=(grid==2u?18u:66u))
   for(unsigned order=1u;order<=2u;order++)
-   test_one(render,grid,order);
+   test_one(render,render_rows,grid,order);
  /* Test 65-grid separately (loop above is bounded, explicit). */
  for(unsigned order=1u;order<=2u;order++)
-  test_one(render,65u,order);
+  test_one(render,render_rows,65u,order);
  assert(dlclose(h)==0);
  puts("PASS GLIBC-FREE owned Y/C420 copy hypothesis -> RGB12 LUT "
       "-> RGB888; no camera ISP/JPEG claims");
