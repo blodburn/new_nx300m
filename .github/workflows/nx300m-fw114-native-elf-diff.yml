@@ -375,6 +375,14 @@ jobs:
               constructors=p["jpeg_constructor_field_store_inventory"]
               if not constructors or p["dscjfif_plus12_callback_initializer_proven"]:
                   raise SystemExit("REJECT unsafe JPEG constructor callback proof")
+              if not p["dscjfif_constructor_plus12_set_to_zero"]:
+                  raise SystemExit("REJECT missing direct MOV #0 → +12 ctor proof "+v)
+              if p["other_methods_plus12_matches_real_runtime_callback"]:
+                  raise SystemExit("REJECT unsupported JFIF dynamic callback claim")
+              print("FW114_JFIF_POST_CTOR_FIELD12_WRITERS",v,
+                    p["other_jfif_methods_writing_plus12"])
+              print("PASS FW114/115 constructor stores NULL at object +12, "
+                    "later encoder field assignment NOT YET TRACED")
               for obj in constructors:
                   print("FW114_ACTUAL_JPEG_CONSTRUCTOR_FIELD12",v,obj["function"],
                         "at",obj["address"],
