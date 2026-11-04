@@ -360,6 +360,18 @@ jobs:
                   p["live_capture_buffer_ownership_proven"] or
                   p["camera_install_or_flash_permitted"]):
                   raise SystemExit("REJECT incorrect camera safety claim "+v)
+              writers=p["stack_slot_store_candidates"]
+              if (len(writers)!=1 or
+                  writers[0]["address"]!="0x00028a9c" or
+                  writers[0]["source_register"]!="r0" or
+                  writers[0]["condition_arm"]!=14 or
+                  p["base_pointer_load_site"]!="0x00028b18" or
+                  p["base_pointer_stack_offset"]!=-48 or
+                  not p["incoming_object_this_r0_saved_to_slot_candidate"] or
+                  p["incoming_sJpegOp_r1_saved_to_slot_candidate"] or
+                  p["cpp_aapcs_this_pointer_runtime_identity_proven"]):
+                  raise SystemExit(
+                      "REJECT "+v+" expected only this/r0 direct stack source")
               print("NX300M_REAL_JFIF_ARG_POINTER",v,
                     "stack_offset",p["base_pointer_stack_offset"],
                     "source_load",p["base_pointer_load_site"],
