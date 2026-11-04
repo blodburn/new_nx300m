@@ -139,8 +139,6 @@ static void test_one(render_fn render,rows_fn render_rows,
  /* Failed row jobs must not corrupt immutable input planes either. */
  assert(memcmp(y,yoriginal,sizeof(y))==0);
  assert(memcmp(c,coriginal,sizeof(c))==0);
- assert(memcmp(y,yoriginal,sizeof(y))==0);
- assert(memcmp(c,coriginal,sizeof(c))==0);
  for(unsigned row=0;row<H;row++)
   for(unsigned x=W*3u;x<RSTRIDE;x++)
    assert(output[(size_t)row*RSTRIDE+x]==0xccu);
@@ -230,7 +228,7 @@ static void test_full_geometry(rows_fn render_rows){
  assert(y[0]==111u&&y[yn-1u]==111u&&c[0]==151u&&c[cn-1u]==151u);
  free(rgb);free(c);free(y);
  printf("PASS owned420 5546x3714: full geometry, 16638-byte output row, "
-        "first/last odd/even indices, stride guards and fail-closed bounds\\n");
+        "first/last odd/even indices, stride guards and fail-closed bounds\n");
 }
 
 int main(int argc,char **argv){
