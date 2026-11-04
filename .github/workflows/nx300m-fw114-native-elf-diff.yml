@@ -277,6 +277,14 @@ jobs:
                             [(x["target_reg"],x["base_reg"],x["byte_offset"])
                              for x in call["nearby_register_loads"]],
                             "TWO_LOAD_CANDIDATE",call["two_load_chain_candidate"])
+                      if (fn in ("DscImage::EncodeYCC(", "DscJfif::JpegEncode(")
+                          or call["site_address"] in (
+                              "0x0002b0bc","0x0002b3e8","0x0002b87c"
+                          )):
+                          print("FW_SIF_REGISTER_WRITES",v,fn,call["site_address"],
+                                call["prior_register_writer_candidates"])
+                          print("FW_SIF_BLX_PRECEDING_WORDS",v,fn,
+                                call["site_address"],call["preceding_arm_words"])
           print("PASS FW1.14/1.15 static SIF vtable and indirect BLX audit; "
                 "camera buffer and on-device hook still NOT VERIFIED")
           print('PASS native ELF FW114/115 file-hash and sampled-symbol delta report')
