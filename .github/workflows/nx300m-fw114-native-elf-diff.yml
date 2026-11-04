@@ -207,6 +207,29 @@ jobs:
                     "SYMBOLIC_CALLS_MATCH",f["symbolic_calls_equal_in_bounded_sample"])
           if total114<1:
               raise SystemExit("REJECT no FW114 SIF ARM BL call evidence")
+          # These are actual version-local ARM BL -> resolved PLT JUMP_SLOT
+          # imports, NOT proof of a camera-tested patch insertion point.
+          by_fn={x["function"]:x for x in graph["functions"]}
+          for v in ("fw114","fw115"):
+              def imports(name):
+                  return [x["target_symbol"] for x in by_fn[name][
+                      v+"_resolved_calls"] if x["target_kind"]=="import"]
+              expected_codec=("bma_open","jpeg_open","jpeg_init",
+                              "jpeg_encoder","jpeg_deInit","jpeg_close")
+              actual=imports("DscJfifHal::Encode(")
+              if not all(x in actual for x in expected_codec):
+                  raise SystemExit("REJECT "+v+" missing native jpeg codec PLT witness")
+              encode=imports("DscImage::EncodeYCC(")
+              exif=imports("DscImage::SaveExifImage(")
+              if not any("DscJpegInstance" in x for x in encode) or (
+                  not any("AllocBuffer" in x for x in encode)
+              ) or not any("DscJpegInstance" in x for x in exif) or (
+                  not any("GetAddress" in x for x in exif)
+              ):
+                  raise SystemExit("REJECT "+v+" incomplete JPEG/EXIF dispatcher boundary")
+              print("PASS_FW_SIF_JPEG_CODEC_IMPORTS",v,
+                    ",".join(expected_codec),
+                    "BUT_NO_CAMERA_HOOK_PROVEN")
           print("PASS read-only FW114 SIF JPEG/EXIF version-specific ARM BL graph; "
                 "NO runtime camera hook proof")
           print("PASS SIF EncodeYCC binding witness; camera ABI still NO-GO")
