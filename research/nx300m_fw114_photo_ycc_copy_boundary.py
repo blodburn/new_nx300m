@@ -20,6 +20,7 @@ import nx300m_fw114_jfif_r6_arg_provenance as mem
 MAX_PHOTO_BYTES=2*1024*1024
 METHODS=(
     "CMmDeviceDriver::EncodeYcc(",
+    "CMmDeviceDriver::ResizeImage(CYcc&, CYcc&)",
     "CMmDeviceDriver::BlockCopy(CYcc&, CYcc&)",
     "CMmDeviceDriver::BlockCopy(CYcc&, sYccAddr)",
     "CMmDeviceDriver::ConvertYccToRGB(",
@@ -66,6 +67,57 @@ def site_window(words:tuple[int,...],start:int,site:int)->dict:
         "bounded_arm_instruction_window":values,
         "register_arg_values_runtime_proven":False,
         "DMA_or_owned_lifetime_proven":False,
+    }
+
+
+def validate_jpeg_abi_marshal(words:tuple[int,...],start:int)->dict:
+    """Exact real ARM getter-result register transfers to JPEG call R0-R3.
+
+    Proves register transfer words, not live CYcc descriptors, DMA ownership,
+    Cb/Cr byte order, RAW coherence or a safe location for overwriting pixels.
+    """
+    expected_getter_moves=(
+        ("Y0","0x00034cc0",0xe1a06003,"r6"),
+        ("Y1","0x00034cd0",0xe1a05003,"r5"),
+        ("C0","0x00034ce0",0xe1a04003,"r4"),
+        ("C1","0x00034cf0",0xe1a09003,"r9"),
+        ("Width","0x00034d00",0xe1a0a003,"r10"),
+        ("Height","0x00034d10",0xe1a08003,"r8"),
+    )
+    getter_witness=[]
+    for name,address,opcode,register in expected_getter_moves:
+        site=int(address,16);index=(site-start)//4
+        if index<0 or index>=len(words) or words[index]!=opcode:
+            raise ValueError("Native FW1.14 YCC getter return register transfer changed")
+        getter_witness.append({
+            "getter_result":name,"site":address,"opcode":"0x%08x"%opcode,
+            "destination_register":register,
+        })
+    expected_call_regs=(
+        ("DscImage instance","0x00034d68",0xe1a00007,"r0","r7"),
+        ("Y0","0x00034d6c",0xe1a01006,"r1","r6"),
+        ("Y1","0x00034d70",0xe1a02005,"r2","r5"),
+        ("C0","0x00034d74",0xe1a03004,"r3","r4"),
+    )
+    arg_witness=[]
+    for name,address,opcode,dst,src in expected_call_regs:
+        site=int(address,16);index=(site-start)//4
+        if index<0 or index>=len(words) or words[index]!=opcode:
+            raise ValueError("Native FW1.14 JPEG entry register ABI changed")
+        arg_witness.append({
+            "argument":name,"site":address,"opcode":"0x%08x"%opcode,
+            "destination":dst,"source":src,
+        })
+    pc=0x00034d78
+    if (pc-start)//4>=len(words):
+        raise ValueError("Missing native FW1.14 codec call")
+    return {
+        "getter_retval_register_transfers":getter_witness,
+        "DscImage_EncodeYCC_first_four_arm_args":arg_witness,
+        "JPEG_callsite":"0x00034d78",
+        "C1_and_geometry_stack_arg_values_proven":False,
+        "photography_live_pixel_input_dma_owned":False,
+        "safe_copy_insertion_proven":False,
     }
 
 
@@ -153,6 +205,12 @@ def inspect(path:Path)->dict:
                     **site_window(words,0x34b18,site),
                 })
             result["validated_ycc_getter_to_encoder_order"]=getter_sequence
+            result["native_arm_jpeg_getter_register_abi"]=validate_jpeg_abi_marshal(words,start=0x34b18)
+            result["pre_encode_stack_marshalling_arm"]=[
+                {"pc":"0x%08x"%(0x34d20+i*4),
+                 "opcode":"0x%08x"%words[(0x34d20-0x34b18)//4+i]}
+                for i in range((0x34d78-0x34d20)//4)
+            ]
     encode=results["CMmDeviceDriver::EncodeYcc("]
     return {
         "scope":"READ_ONLY_PRIVATE_FW114_PHOTO_ELF_STATIC",
