@@ -441,6 +441,53 @@ jobs:
                         "DscJPEG::Instance(","DscJfif::DscJfif()")
               if set(a["method_evidence"])!=set(expected):
                   raise SystemExit("REJECT incomplete HAL constructor inventory "+v)
+              table=a["static_hal_initializer_four_fields"]
+              if not a["tDscHal_plus8_static_symbol_relocation_verified"] or (
+                  not table["tDscHal_plus8_static_reloc_symbol_is_DscJfifHal_Encode"]
+              ) or table["hardware_callback_invocation_observed"] or (
+                  table["safe_real_isp_buffer_hook_proven"]
+              ) or table["flash_allowed"]:
+                  raise SystemExit("REJECT FW HAL static pointer proof or unsafe claim")
+              if (table["pic_base_evidence"]["got_pic_base"]!="0x0006c4d0" or
+                  table["stack_table_pointer_setup"]!="0x00054004" or
+                  table["instance_bl_callsite"]!="0x00054014"):
+                  raise SystemExit("REJECT native FW version-specific PIC/callsite")
+              expect=[
+                  (0,"0x0006ce3c","_ZN10DscJfifHal5Parse"),
+                  (4,"0x0006ce78","_ZN10DscJfifHal6Decode"),
+                  (8,"0x0006ce98","_ZN10DscJfifHal6Encode"),
+                  (12,"0x0006ce9c","_ZN10DscJfifHal11CompressRaw")
+              ]
+              fields=table["fields"]
+              if len(fields)!=4:
+                  raise SystemExit("REJECT not four tDscHal callback table entries")
+              for item,(offset,got,mangled) in zip(fields,expect):
+                  if (item["tDscHal_field_offset"]!=offset or
+                      item["got_slot"]!=got or
+                      not item["mangled_native_symbol"].startswith(mangled) or
+                      item["dynamic_relocation_type"]!="R_ARM_GLOB_DAT" or
+                      item["on_camera_pointer_initialized_observed"]):
+                      raise SystemExit("REJECT wrong HAL table callback GOT identity")
+              if fields[2]["native_symbol_value"]!="0x00029830":
+                  raise SystemExit("REJECT native HAL Encode function address mismatch")
+              upstream=a["method_evidence"]["DscImage::DscJpegInstance("]
+              windows=upstream["hal_instance_call_argument_windows"]
+              if len(windows)!=1 or windows[0][
+                  "native_callsite"
+              ]!="0x00054014" or windows[0][
+                  "fourth_argument_r3_value_determined"
+              ]:
+                  raise SystemExit("REJECT upstream caller evidence")
+              if not any(x["callsite"]=="0x00054014" and
+                        "_ZN7DscJPEG8InstanceEmibP7tDscHal" in x[
+                            "target_symbol"
+                        ] for x in upstream["identified_direct_calls"]):
+                  raise SystemExit("REJECT DscImage Instance BL→PLT not found")
+              print("PASS_FW_NATIVE_TDSCHAL_GOT_FOUR_FIELDS",v,
+                    [(x["tDscHal_field_offset"],x["got_slot"],
+                      x["mangled_native_symbol"],x["native_symbol_value"])
+                     for x in fields],
+                    "OFFLINE_STATIC_ONLY_NO_DEVICE_HOOK")
               globs=a["hal_encoder_static_got_relocations"]
               if not any(x["relocation_type"]=="R_ARM_GLOB_DAT" and (
                   x["got_address"]=="0x0006ce98"
