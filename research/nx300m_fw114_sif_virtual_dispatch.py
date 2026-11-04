@@ -63,12 +63,19 @@ def symbol_index(text:str)->dict[str,dict]:
     if len(decoded)!=len(keys):
         reject("C++ symbol demangling incomplete")
     result={}
+    ambiguous=set()
     for key,display in zip(keys,decoded):
         value=raw[key]
         name=(display,key[1])
         if name in result and result[name]!=value:
-            reject("Conflicting demangled function/object definitions")
-        result[name]=value
+            # C1/C2 constructors and D0/D1/D2 destructors can demangle to
+            # identical names at distinct native addresses. Never silently
+            # choose one, but do not discard unrelated unique symbols.
+            ambiguous.add(name)
+        else:
+            result[name]=value
+    for name in ambiguous:
+        result.pop(name,None)
     return {name:{"address":value[0],"size":value[1],"kind":kind}
             for (name,kind),value in result.items()}
 
