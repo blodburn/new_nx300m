@@ -13,6 +13,8 @@ on:
       - 'research/nx300m_fw114_capture_jpeg_route.py'
       - 'research/nx300m_fw114_sif_callgraph.py'
       - 'research/test_nx300m_fw114_sif_callgraph.py'
+      - 'research/nx300m_fw114_sif_virtual_dispatch.py'
+      - 'research/test_nx300m_fw114_sif_virtual_dispatch.py'
       - 'research/test_nx300m_fw114_capture_jpeg_route.py'
       - 'research/test_nx300m_fw114_function_proofs.py'
       - 'research/test_nx300m_fw114_native_elf_diff.py'
@@ -30,6 +32,8 @@ on:
       - 'research/nx300m_fw114_capture_jpeg_route.py'
       - 'research/nx300m_fw114_sif_callgraph.py'
       - 'research/test_nx300m_fw114_sif_callgraph.py'
+      - 'research/nx300m_fw114_sif_virtual_dispatch.py'
+      - 'research/test_nx300m_fw114_sif_virtual_dispatch.py'
       - 'research/test_nx300m_fw114_capture_jpeg_route.py'
       - 'research/test_nx300m_fw114_function_proofs.py'
       - 'research/test_nx300m_fw114_native_elf_diff.py'
@@ -58,6 +62,7 @@ jobs:
           python3 research/test_nx300m_fw114_function_proofs.py
           python3 research/test_nx300m_fw114_capture_jpeg_route.py
           python3 research/test_nx300m_fw114_sif_callgraph.py
+          python3 research/test_nx300m_fw114_sif_virtual_dispatch.py
           python3 research/test_nx300m_fw114_binary_delta.py
 
       - name: Install pinned offline UBI reader in ephemeral venv
@@ -233,6 +238,44 @@ jobs:
           print("PASS read-only FW114 SIF JPEG/EXIF version-specific ARM BL graph; "
                 "NO runtime camera hook proof")
           print("PASS SIF EncodeYCC binding witness; camera ABI still NO-GO")
+          virtual=report["version_specific_sif_virtual_dispatch"]
+          if virtual["camera_function_pointer_runtime_identity_proven"] or (
+              virtual["camera_firmware_modification_permitted"]
+          ):
+              raise SystemExit("REJECT virtual dispatch overstated")
+          for v in ("fw114","fw115"):
+              a=virtual[v]
+              if a["dynamic_dispatch_between_encode_and_codec_proven"] or (
+                  a["camera_patch_or_flash_permitted"]
+              ) or a["vtable_name"]!="vtable for DscJfif":
+                  raise SystemExit("REJECT invalid SIF native vtable metadata")
+              print("FW_SIF_VTABLE",v,a["vtable_start"],
+                    "BYTES",a["vtable_bytes"],"SLOTS",len(a["vtable_slots"]))
+              for slot in a["vtable_slots"]:
+                  print("FW_SIF_VTABLE_SLOT",v,
+                        slot["vtable_byte_offset"],
+                        slot["stored_word"],
+                        slot["relocation"],
+                        slot["target_defined_function"] or "NOT_RESOLVED")
+              for name,item in a["recognized_methods"].items():
+                  print("FW_SIF_VTABLE_METHOD",v,name,item["function_address"],
+                        "OFFSETS",item["vtable_matching_slot_offsets"])
+              for fn,entry in a["indirect_elf_functions"].items():
+                  print("FW_SIF_INDIRECT_FUNCTION",v,fn,
+                        "START",entry["function_address"],
+                        "BLX",entry["BLX_register"],
+                        "BX_NONRETURN",entry["BX_register_tail_candidate"],
+                        "LDR_PC",entry["LDR_PC_indirect_tail_candidate"])
+                  for call in entry["sites"]:
+                      print("FW_SIF_INDIRECT_SITE",v,fn,
+                            call["site_address"],call["branch_kind"],
+                            call["register"],
+                            "MEMORY_LOAD_CHAIN",
+                            [(x["target_reg"],x["base_reg"],x["byte_offset"])
+                             for x in call["nearby_register_loads"]],
+                            "TWO_LOAD_CANDIDATE",call["two_load_chain_candidate"])
+          print("PASS FW1.14/1.15 static SIF vtable and indirect BLX audit; "
+                "camera buffer and on-device hook still NOT VERIFIED")
           print('PASS native ELF FW114/115 file-hash and sampled-symbol delta report')
           PY
 
