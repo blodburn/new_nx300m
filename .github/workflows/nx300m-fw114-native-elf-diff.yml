@@ -17,6 +17,8 @@ on:
       - 'research/test_nx300m_fw114_sif_virtual_dispatch.py'
       - 'research/nx300m_fw114_jfif_r6_arg_provenance.py'
       - 'research/test_nx300m_fw114_jfif_r6_arg_provenance.py'
+      - 'research/nx300m_fw114_hal_table_plus8_audit.py'
+      - 'research/test_nx300m_fw114_hal_table_plus8_audit.py'
       - 'research/test_nx300m_fw114_capture_jpeg_route.py'
       - 'research/test_nx300m_fw114_function_proofs.py'
       - 'research/test_nx300m_fw114_native_elf_diff.py'
@@ -38,6 +40,8 @@ on:
       - 'research/test_nx300m_fw114_sif_virtual_dispatch.py'
       - 'research/nx300m_fw114_jfif_r6_arg_provenance.py'
       - 'research/test_nx300m_fw114_jfif_r6_arg_provenance.py'
+      - 'research/nx300m_fw114_hal_table_plus8_audit.py'
+      - 'research/test_nx300m_fw114_hal_table_plus8_audit.py'
       - 'research/test_nx300m_fw114_capture_jpeg_route.py'
       - 'research/test_nx300m_fw114_function_proofs.py'
       - 'research/test_nx300m_fw114_native_elf_diff.py'
@@ -68,6 +72,7 @@ jobs:
           python3 research/test_nx300m_fw114_sif_callgraph.py
           python3 research/test_nx300m_fw114_sif_virtual_dispatch.py
           python3 research/test_nx300m_fw114_jfif_r6_arg_provenance.py
+          python3 research/test_nx300m_fw114_hal_table_plus8_audit.py
           python3 research/test_nx300m_fw114_binary_delta.py
 
       - name: Install pinned offline UBI reader in ephemeral venv
@@ -419,6 +424,38 @@ jobs:
                     "hardware_target_proven",p["hal_encode_target_proven"])
           print("PASS FW114/115 real JpegEncode argument → fp slot → r6 field "
                 "static evidence; runtime HAL target still NOT PROVEN")
+          producer=report["hal_table_plus8_initialization_witness"]
+          if producer["hal_callback_exact_runtime_address_proven"] or (
+              producer["camera_flash_permitted"]
+          ):
+              raise SystemExit("REJECT HAL callback output overstates proof")
+          for v in ("fw114","fw115"):
+              a=producer[v]
+              if (a["callback_runtime_target_proven"] or
+                  a["real_dma_ycc_buffer_ownership_proven"] or
+                  a["firmware_install_or_flash_permitted"]):
+                  raise SystemExit("REJECT unsafe HAL runtime proof")
+              expected=("DscJfif::HalRegister(",
+                        "DscJPEG::DscJPEG(unsigned long",
+                        "DscJPEG::Instance(","DscJfif::DscJfif()")
+              if set(a["method_evidence"])!=set(expected):
+                  raise SystemExit("REJECT incomplete HAL constructor inventory "+v)
+              globs=a["hal_encoder_static_got_relocations"]
+              if not any(x["relocation_type"]=="R_ARM_GLOB_DAT" and (
+                  x["got_address"]=="0x0006ce98"
+              ) for x in globs):
+                  raise SystemExit("REJECT no native HAL Encode GOT witness "+v)
+              for name,entry in a["method_evidence"].items():
+                  print("FW_NATIVE_JPEG_HAL_TABLE_INIT",v,name,
+                        entry["function_address"],
+                        "ARMBL",entry["direct_bl_candidates"],
+                        "CALLS",entry["identified_direct_calls"],
+                        "PLUS8_WRITES",entry["direct_plus8_store_candidates"])
+              print("FW_HAL_ENCODER_INDEPENDENT_GOT",v,
+                    a["hal_encoder_native_address"],globs,
+                    "UPSTREAM_TABLE_VALUE_NOT_VERIFIED")
+          print("PASS real FW1.14/1.15 JPEG HAL constructor and Instance static "
+                "field+8 writer investigation; runtime still NO-GO")
           print('PASS native ELF FW114/115 file-hash and sampled-symbol delta report')
           PY
 
