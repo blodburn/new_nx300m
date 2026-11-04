@@ -161,6 +161,21 @@ def constructor_field_store_candidates(
                         "base_register":"r"+str(info["base_register"]),
                         "value_register":"r"+str(info["data_register"]),
                         "condition_arm":info["condition"],
+                        "preceding_arm_words":[
+                            {"site":"0x%08x"%(address+4*j),
+                             "opcode":"0x%08x"%words[j]}
+                            for j in range(max(0,i-14),i+1)
+                        ],
+                        "pointer_base_prior_writers":
+                            sif.register_writer_candidates(
+                                list(words),i,info["base_register"]
+                            ),
+                        "stored_value_prior_writers":
+                            sif.register_writer_candidates(
+                                list(words),i,info["data_register"]
+                            ),
+                        "static_store_targets_live_jfif_object_proven":False,
+                        "stored_value_is_hal_encode_callback_proven":False,
                     })
             output.append({
                 "function":func["name"][:180],
