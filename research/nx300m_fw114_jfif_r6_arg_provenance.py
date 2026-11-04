@@ -121,6 +121,13 @@ def select_provenance(words: list[int], start: int) -> dict:
     }
 
 
+def arm_mov_immediate_zero(word:int,register:int)->bool:
+    """ARM unconditional MOV Rd, #0 (not a register MOV or post-index)."""
+    return (word>>28)==14 and (word&0x0fe00000)==0x03a00000 and (
+        (word>>12)&15
+    )==register and (word&0xfff)==0
+
+
 def constructor_field_store_candidates(
     path: Path, segments: list[tuple[int,int,int]],
     symbols: dict[str,dict]
@@ -175,6 +182,10 @@ def constructor_field_store_candidates(
                                 list(words),i,info["data_register"]
                             ),
                         "static_store_targets_live_jfif_object_proven":False,
+                        "immediately_prior_arm_mov_zero":
+                            i>=1 and arm_mov_immediate_zero(
+                                words[i-1],info["data_register"]
+                            ),
                         "stored_value_is_hal_encode_callback_proven":False,
                     })
             output.append({
@@ -209,6 +220,17 @@ def inspect(path:Path)->dict:
     out=select_provenance(values,address)
     out["jpeg_constructor_field_store_inventory"]=constructor_field_store_candidates(
         path,segments,sym
+    )
+    jfif_ctor=[
+        item for item in out["jpeg_constructor_field_store_inventory"]
+        if item["function"]=="DscJfif::DscJfif()"
+    ]
+    out["dscjfif_constructor_plus12_set_to_zero"]=(
+        len(jfif_ctor)==1 and
+        len(jfif_ctor[0]["stores_into_any_base_plus12"])==1 and
+        jfif_ctor[0]["stores_into_any_base_plus12"][0][
+            "immediately_prior_arm_mov_zero"
+        ] is True
     )
     out["dscjfif_plus12_callback_initializer_proven"]=False
     out["mirror_source_is_vendor_authenticated"]=False
