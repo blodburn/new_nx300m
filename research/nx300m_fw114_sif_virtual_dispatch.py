@@ -134,6 +134,38 @@ def relocation_symbol_targets(text:str)->dict[int,dict]:
     return found
 
 
+def jpeg_callback_relocation_witnesses(
+    entries:dict[int,dict]
+)->list[dict]:
+    """Find real SIF relocations to JPEG functions, not a vtable guess."""
+    candidates=[(site,item) for site,item in entries.items()
+                if "DscJfif" in item["mangled_symbol"] or (
+                    "DscJPEG" in item["mangled_symbol"]
+                )]
+    if len(candidates)>500:
+        reject("Unexpectedly many focused JPEG callback relocations")
+    raw="\\n".join(item["mangled_symbol"] for _,item in candidates)+"\\n"
+    names=arm.offline_tool(["c++filt"],raw).splitlines() if candidates else []
+    if len(names)!=len(candidates):
+        reject("Incomplete JPEG symbol resolution")
+    out=[]
+    prefixes=("DscJfifHal::Encode(","DscJfif::JpegEncode(",
+              "DscJfif::JpegDecode(","DscJPEG::TaskMain(")
+    for (site,item),name in zip(candidates,names):
+        if not name.startswith(prefixes):
+            continue
+        if len(out)>=120:
+            reject("Too many identified JPEG callback relocations")
+        out.append({
+            "relocation_vaddr":"0x%08x"%site,
+            "relocation_type":item["relocation_type"],
+            "symbol_value":item["symbol_value"],
+            "target_native_symbol":name[:240],
+            "live_callback_invocation_verified":False,
+        })
+    return out
+
+
 def read_word(data:bytes,loads:list[tuple[int,int,int]],vaddr:int)->int:
     position=focus.file_range_for_vaddr(loads,vaddr,4)
     return struct.unpack_from("<I",data,position)[0]
@@ -226,6 +258,23 @@ def register_writer_candidates(words:list[int],site:int,register:int)->list[dict
     return found[-8:]
 
 
+def writer_windows(words:list[int],writes:list[dict])->list[dict]:
+    # A small read-only window around the candidate register assignment.
+    # Do not pretend this sequential window is a control-flow proof.
+    result=[]
+    for write in writes[-3:]:
+        i=write["word_index"]
+        result.append({
+            "word_index":i,
+            "candidate":write,
+            "nearby_words":[
+                {"relative_pc_offset":4*p,"opcode":"0x%08x"%words[p]}
+                for p in range(max(0,i-7),min(len(words),i+5))
+            ],
+        })
+    return result
+
+
 def scan_indirect(
     data:bytes, loads:list[tuple[int,int,int]], addr:int, size:int
 )->dict:
@@ -257,6 +306,9 @@ def scan_indirect(
             ],
             "prior_register_writer_candidates":
                 register_writer_candidates(list(words),i,reg),
+            "source_writer_windows":writer_windows(
+                list(words),register_writer_candidates(list(words),i,reg)
+            ),
             "provenance_control_flow_reconstructed":False,
         })
     return {
@@ -284,6 +336,8 @@ def inspect(path:Path)->dict:
     relocation_text=arm.offline_tool(["readelf","-Wr",str(path)])
     relocs=relocations(relocation_text)
     relocation_targets=relocation_symbol_targets(relocation_text)
+    jpeg_callback_relocations=jpeg_callback_relocation_witnesses(
+        relocation_targets)
     defined={e["address"]:name for name,e in symbols.items()
              if e["kind"]=="FUNC" and e["size"]>0}
     slots=[]
@@ -347,6 +401,7 @@ def inspect(path:Path)->dict:
         "vtable_bytes":vtable["size"],
         "vtable_slots":slots,
         "recognized_methods":methods,
+        "jpeg_related_relocation_targets":jpeg_callback_relocations,
         "indirect_elf_functions":funcs,
         "dynamic_dispatch_between_encode_and_codec_proven":False,
         "camera_buffer_ownership_verified":False,
