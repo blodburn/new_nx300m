@@ -141,3 +141,12 @@ freestanding-test:
 	  -o .build/test_nx300m_host_freestanding420_jpeg
 	.build/test_nx300m_host_freestanding420_jpeg \
 	  .build/libnx300m_filmcore_nolibc.so
+
+	$(CC) -std=c11 -O2 -Wall -Wextra -Werror \
+	  -Iresearch research/test_nx300m_host_shutter420.c \
+	  research/nx300m_host_shutter420.c \
+	  research/nx300m_host_freestanding420_jpeg.c \
+	  $(SOURCES) -ldl $(LDLIBS) \
+	  -o .build/test_nx300m_host_shutter420
+	.build/test_nx300m_host_shutter420 \
+	  .build/libnx300m_filmcore_nolibc.so
