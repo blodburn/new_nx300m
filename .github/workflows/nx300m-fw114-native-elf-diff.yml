@@ -372,6 +372,14 @@ jobs:
                   p["cpp_aapcs_this_pointer_runtime_identity_proven"]):
                   raise SystemExit(
                       "REJECT "+v+" expected only this/r0 direct stack source")
+              constructors=p["jpeg_constructor_field_store_inventory"]
+              if not constructors or p["dscjfif_plus12_callback_initializer_proven"]:
+                  raise SystemExit("REJECT unsafe JPEG constructor callback proof")
+              for obj in constructors:
+                  print("FW114_ACTUAL_JPEG_CONSTRUCTOR_FIELD12",v,obj["function"],
+                        "at",obj["address"],
+                        "field_writes",obj["stores_into_any_base_plus12"],
+                        "callback_assignment_proven",obj["callback_assignment_proven"])
               print("NX300M_REAL_JFIF_ARG_POINTER",v,
                     "stack_offset",p["base_pointer_stack_offset"],
                     "source_load",p["base_pointer_load_site"],
