@@ -204,7 +204,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--manifest", default="capture.json")
     args = ap.parse_args(argv)
     try:
-        outcome = verify_bundle(args.bundle_dir.resolve(),
+        outcome = verify_bundle(args.bundle_dir.absolute(),
                                 args.probe, args.probe_sha256, args.manifest)
         print(json.dumps(outcome, sort_keys=True))
         return 3 if outcome["host_probe_verdict"]["host_color_hypothesis"] == "INCONCLUSIVE" else 0
