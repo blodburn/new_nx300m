@@ -19,7 +19,8 @@ static int overlaps(const void *a,size_t an,const void *b,size_t bn){
  if(an>UINTPTR_MAX-x||bn>UINTPTR_MAX-y)return 1;
  return x<y+bn&&y<x+an;
 }
-static int preflight(const nx_film_owned420_hypothesis_job *j){
+static int preflight(const nx_film_owned420_hypothesis_job *j,
+                     unsigned first_row, unsigned rows){
  if(!j||j->copy_declaration!=NX_FILM_420_COPY_DECLARATION||
     (j->hypothesis!=NX_FILM_BT601_FULL_CBCR_HYPOTHESIS&&
      j->hypothesis!=NX_FILM_BT601_FULL_CRCB_HYPOTHESIS)||
@@ -34,10 +35,12 @@ static int preflight(const nx_film_owned420_hypothesis_job *j){
     j->y_stride<j->width||j->chroma_stride<j->width||
     j->rgb_stride<(size_t)j->width*3u||
     j->y_stride>65536u||j->chroma_stride>65536u||
-    j->rgb_stride>65536u)return -1;
+    j->rgb_stride>65536u||
+    first_row>=j->height||rows==0u||
+    rows>j->height-first_row)return -1;
  const size_t yn=(size_t)(j->height-1u)*j->y_stride+j->width;
  const size_t cn=(size_t)(j->height/2u-1u)*j->chroma_stride+j->width;
- const size_t rn=(size_t)(j->height-1u)*j->rgb_stride+
+ const size_t rn=(size_t)(rows-1u)*j->rgb_stride+
                  (size_t)j->width*3u;
  const size_t lut_len=(size_t)j->grid*j->grid*j->grid*sizeof(nx_rgb12);
  if(yn>j->y_bytes||cn>j->chroma_bytes||rn>j->rgb_bytes||
@@ -56,13 +59,13 @@ static int preflight(const nx_film_owned420_hypothesis_job *j){
   if(j->decode_srgb[i]>4095u)return -1;
  return 0;
 }
-int nx_film_core_render_owned420_hypothesis(
-    const nx_film_owned420_hypothesis_job *j){
- if(preflight(j)!=0)return -1;
- for(unsigned row=0;row<j->height;row++){
+static int render_rows(const nx_film_owned420_hypothesis_job *j,
+                       unsigned first_row,unsigned rows){
+ if(preflight(j,first_row,rows)!=0)return -1;
+ for(unsigned row=first_row;row<first_row+rows;row++){
   const uint8_t *yp=j->y+(size_t)row*j->y_stride;
   const uint8_t *cp=j->chroma+(size_t)(row/2u)*j->chroma_stride;
-  uint8_t *target=j->rgb+(size_t)row*j->rgb_stride;
+  uint8_t *target=j->rgb+(size_t)(row-first_row)*j->rgb_stride;
   for(unsigned x=0;x<j->width;x++){
    const unsigned pair=x&~1u;
    const unsigned cb=cp[pair+
@@ -85,4 +88,19 @@ int nx_film_core_render_owned420_hypothesis(
   }
  }
  return 0;
+}
+
+/* Backward-compatible full-frame export: original job ABI is unchanged. */
+int nx_film_core_render_owned420_hypothesis(
+    const nx_film_owned420_hypothesis_job *j){
+ return render_rows(j,0u,j?j->height:0u);
+}
+
+/* A stripe output pointer always starts at its first local RGB row.
+ * No retention, dynamic memory, callbacks or native JPEG calls.
+ */
+int nx_film_core_render_owned420_rows_hypothesis(
+    const nx_film_owned420_hypothesis_job *j,
+    unsigned first_row,unsigned row_count){
+ return render_rows(j,first_row,row_count);
 }
