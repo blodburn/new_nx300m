@@ -63,6 +63,34 @@ def candidate_mem_store_sites(
     return found
 
 
+def arm_argument_window(words:tuple[int,...],start:int,site:int)->dict:
+    """Report actual native ARM instructions near one call, not argument proof."""
+    if site<start or (site-start)%4:
+        raise ValueError("Callsite not inside ARM function")
+    index=(site-start)//4
+    if index>=len(words):
+        raise ValueError("Callsite exceeds bounded native body")
+    lower=max(0,index-18)
+    return {
+        "native_callsite":"0x%08x"%site,
+        "preceding_arm_words":[
+            {"site":"0x%08x"%(start+4*i),
+             "opcode":"0x%08x"%words[i]}
+            for i in range(lower,index)
+        ],
+        "r3_candidates_before_call":[
+            {"word_index":x["word_index"],
+             "opcode":x["opcode"],
+             "kind":x["kind"],
+             "source_register":x["source_register"],
+             "source_byte_offset":x["source_byte_offset"]}
+            for x in sif.register_writer_candidates(list(words),index,3)
+        ],
+        "fourth_argument_r3_value_determined":False,
+        "hal_table_lifetime_proven":False,
+    }
+
+
 def native_method(path:Path, image:bytes, segments:list[tuple[int,int,int]],
                   symbols:dict[str,dict],prefix:str,
                   defined:dict[int,str],relocs:dict[int,str]) -> dict:
@@ -79,8 +107,14 @@ def native_method(path:Path, image:bytes, segments:list[tuple[int,int,int]],
     edges=graph.collect_edges(image,segments,addr,size,
                               defined,relocs)
     # PLT stubs and GOT relocations require the complete version-local ELF.
+    target_windows=[
+        arm_argument_window(words,addr,int(x["callsite"],16))
+        for x in edges["identified_callsite_evidence"]
+        if "_ZN7DscJPEG8InstanceEmibP7tDscHal" in x["target_symbol"]
+    ]
     return {
         "native_symbol":fn["name"],
+        "hal_instance_call_argument_windows":target_windows,
         "function_address":"0x%08x"%addr,
         "size":size,
         "sha256":hashlib.sha256(raw).hexdigest(),
