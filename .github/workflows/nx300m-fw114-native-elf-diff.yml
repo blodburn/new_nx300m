@@ -15,6 +15,8 @@ on:
       - 'research/test_nx300m_fw114_sif_callgraph.py'
       - 'research/nx300m_fw114_sif_virtual_dispatch.py'
       - 'research/test_nx300m_fw114_sif_virtual_dispatch.py'
+      - 'research/nx300m_fw114_jfif_r6_arg_provenance.py'
+      - 'research/test_nx300m_fw114_jfif_r6_arg_provenance.py'
       - 'research/test_nx300m_fw114_capture_jpeg_route.py'
       - 'research/test_nx300m_fw114_function_proofs.py'
       - 'research/test_nx300m_fw114_native_elf_diff.py'
@@ -34,6 +36,8 @@ on:
       - 'research/test_nx300m_fw114_sif_callgraph.py'
       - 'research/nx300m_fw114_sif_virtual_dispatch.py'
       - 'research/test_nx300m_fw114_sif_virtual_dispatch.py'
+      - 'research/nx300m_fw114_jfif_r6_arg_provenance.py'
+      - 'research/test_nx300m_fw114_jfif_r6_arg_provenance.py'
       - 'research/test_nx300m_fw114_capture_jpeg_route.py'
       - 'research/test_nx300m_fw114_function_proofs.py'
       - 'research/test_nx300m_fw114_native_elf_diff.py'
@@ -63,6 +67,7 @@ jobs:
           python3 research/test_nx300m_fw114_capture_jpeg_route.py
           python3 research/test_nx300m_fw114_sif_callgraph.py
           python3 research/test_nx300m_fw114_sif_virtual_dispatch.py
+          python3 research/test_nx300m_fw114_jfif_r6_arg_provenance.py
           python3 research/test_nx300m_fw114_binary_delta.py
 
       - name: Install pinned offline UBI reader in ephemeral venv
@@ -340,6 +345,80 @@ jobs:
                                 call["site_address"],call["source_writer_windows"])
           print("PASS FW1.14/1.15 static SIF vtable and indirect BLX audit; "
                 "camera buffer and on-device hook still NOT VERIFIED")
+          provenance=report["jfif_encode_r6_argument_provenance"]
+          for v in ("fw114","fw115"):
+              p=provenance[v]
+              if (p["blx_register"]!="r6" or
+                  p["field_load_expression"]!="LDR r6, [r3, #12]" or
+                  p["field_byte_offset"]!=12 or
+                  p["base_pointer_source_register"]!="fp" or
+                  p["blx_register_site"]!="0x00028c18" or
+                  p["r6_field_load_site"]!="0x00028b1c"):
+                  raise SystemExit("REJECT wrong JpegEncode r6 function pointer evidence "+v)
+              if (p["indirect_call_runtime_target_proven"] or
+                  p["hal_encode_target_proven"] or
+                  p["live_capture_buffer_ownership_proven"] or
+                  p["camera_install_or_flash_permitted"]):
+                  raise SystemExit("REJECT incorrect camera safety claim "+v)
+              writers=p["stack_slot_store_candidates"]
+              if (len(writers)!=1 or
+                  writers[0]["address"]!="0x00028a9c" or
+                  writers[0]["source_register"]!="r0" or
+                  writers[0]["condition_arm"]!=14 or
+                  p["base_pointer_load_site"]!="0x00028b18" or
+                  p["base_pointer_stack_offset"]!=-48 or
+                  not p["incoming_object_this_r0_saved_to_slot_candidate"] or
+                  p["incoming_sJpegOp_r1_saved_to_slot_candidate"] or
+                  p["cpp_aapcs_this_pointer_runtime_identity_proven"]):
+                  raise SystemExit(
+                      "REJECT "+v+" expected only this/r0 direct stack source")
+              constructors=p["jpeg_constructor_field_store_inventory"]
+              if not constructors or p["dscjfif_plus12_callback_initializer_proven"]:
+                  raise SystemExit("REJECT unsafe JPEG constructor callback proof")
+              if not p["dscjfif_constructor_plus12_set_to_zero"]:
+                  raise SystemExit("REJECT missing direct MOV #0 → +12 ctor proof "+v)
+              if p["other_methods_plus12_matches_real_runtime_callback"]:
+                  raise SystemExit("REJECT unsupported JFIF dynamic callback claim")
+              hal=p["hal_registration_pointer_field_mapping"]
+              if (hal["native_address"]!="0x00028828" or
+                  not hal["jfif_encode_callback_object_plus12_from_hal_plus8"] or
+                  hal["runtime_hal_callback_address_proven"] or
+                  hal["hardware_encode_is_third_callback_slot_proven"] or
+                  hal["camera_firmware_flash_permitted"]):
+                  raise SystemExit("REJECT incorrect real HalRegister mapping "+v)
+              copies=hal["static_arm_exact_field_copies"]
+              if [(x["tDscHal_input_field_offset"],
+                   x["dscjfif_object_field_offset"]) for x in copies]!=[
+                      (0,4),(4,8),(8,12)
+                  ] or copies[-1]["read_callback_slot_site"]!="0x0002886c" or (
+                      copies[-1]["write_jfif_slot_site"]!="0x00028874"
+                  ):
+                  raise SystemExit("REJECT tDscHal +8 to Jfif +12 not verified "+v)
+              print("PASS_FW_NATIVE_JFIF_HALREGISTER",v,
+                    "THIS_R0",hal["this_r0_stack_site"],
+                    "HAL_R1",hal["hal_pointer_r1_stack_site"],
+                    "COPIES",[(x["tDscHal_input_field_offset"],
+                               x["dscjfif_object_field_offset"]) for x in copies],
+                    "ENCODE_CALLBACK_LIVE_POINTER_UNVERIFIED")
+              print("FW114_JFIF_POST_CTOR_FIELD12_WRITERS",v,
+                    p["other_jfif_methods_writing_plus12"])
+              print("PASS FW114/115 constructor stores NULL at object +12, "
+                    "later encoder field assignment NOT YET TRACED")
+              for obj in constructors:
+                  print("FW114_ACTUAL_JPEG_CONSTRUCTOR_FIELD12",v,obj["function"],
+                        "at",obj["address"],
+                        "field_writes",obj["stores_into_any_base_plus12"],
+                        "callback_assignment_proven",obj["callback_assignment_proven"])
+              print("NX300M_REAL_JFIF_ARG_POINTER",v,
+                    "stack_offset",p["base_pointer_stack_offset"],
+                    "source_load",p["base_pointer_load_site"],
+                    "field_load",p["r6_field_load_site"],
+                    "call",p["blx_register_site"],
+                    "writes",p["stack_slot_store_candidates"],
+                    "candidate_r1",p["incoming_sJpegOp_r1_saved_to_slot_candidate"],
+                    "hardware_target_proven",p["hal_encode_target_proven"])
+          print("PASS FW114/115 real JpegEncode argument → fp slot → r6 field "
+                "static evidence; runtime HAL target still NOT PROVEN")
           print('PASS native ELF FW114/115 file-hash and sampled-symbol delta report')
           PY
 

@@ -1,0 +1,335 @@
+#!/usr/bin/env python3
+"""Static sJpegOp ARM32 register-to-stack provenance from real libsif ELF.
+
+Offline-only analysis of exact FW1.14/1.15 symbols and code bytes.
+No camera I/O, firmware loading, memory writing, native patch or flashing.
+The file is a third-party mirror, NOT manufacturer-authenticated.
+"""
+from __future__ import annotations
+
+import hashlib
+from pathlib import Path
+import struct
+
+import nx300m_fw114_function_proofs as elf
+import nx300m_fw114_sif_virtual_dispatch as sif
+
+FUNCTION = "DscJfif::JpegEncode("
+FIELD_BYTE_OFFSET = 12
+MAX_WORDS = 1024
+
+
+def decode_mem_word(word: int) -> dict | None:
+    """ARM pre-indexed 32-bit immediate LDR/STR, without writeback.
+
+    This does NOT model condition flags, execution order, memory aliases
+    or Thumb instructions. Preserve condition and reject unusual modes.
+    """
+    cond = (word >> 28) & 15
+    if (cond == 15 or (word >> 26) & 3 != 1 or
+        (word >> 25) & 1 or (word >> 24) & 1 == 0 or
+        (word >> 22) & 1 or (word >> 21) & 1):
+        return None
+    return {
+        "kind": "LDR" if (word >> 20) & 1 else "STR",
+        "base_register": (word >> 16) & 15,
+        "data_register": (word >> 12) & 15,
+        "offset": (1 if (word >> 23) & 1 else -1) * (word & 0xfff),
+        "condition": cond,
+    }
+
+
+def select_provenance(words: list[int], start: int) -> dict:
+    if not words or len(words) > MAX_WORDS or start & 3:
+        raise ValueError("Invalid bounded ARM function code")
+    calls=[i for i,w in enumerate(words)
+           if sif.decode_indirect(w)==("BLX_register",6)]
+    if len(calls)!=1:
+        raise ValueError("Missing or ambiguous BLX r6 in JpegEncode")
+    call=calls[0]
+    load_sites=[]
+    for i,w in enumerate(words[:call]):
+        info=decode_mem_word(w)
+        if (info and info["kind"]=="LDR" and
+            info["data_register"]==6 and info["base_register"]==3 and
+            info["offset"]==FIELD_BYTE_OFFSET):
+            load_sites.append(i)
+    if len(load_sites)!=1:
+        raise ValueError("Missing or ambiguous r6 <- [r3 + 12] writer")
+    load=load_sites[0]
+    # A pointer base used at the writer must come from a stack slot.
+    base_candidates=[]
+    for i in range(max(0,load-5),load):
+        info=decode_mem_word(words[i])
+        if (info and info["kind"]=="LDR" and
+            info["data_register"]==3 and info["base_register"]==11):
+            base_candidates.append((i,info))
+    if len(base_candidates)!=1:
+        raise ValueError("Missing or ambiguous r3 <- [fp + imm] near r6 writer")
+    pointer_load,base=base_candidates[0]
+    slot_writers=[]
+    for i,w in enumerate(words[:pointer_load]):
+        info=decode_mem_word(w)
+        if (info and info["kind"]=="STR" and
+            info["base_register"]==11 and
+            info["offset"]==base["offset"]):
+            slot_writers.append({
+                "address":f"0x{start+4*i:08x}",
+                "source_register":f"r{info['data_register']}",
+                "condition_arm":info["condition"],
+                "word_index":i,
+            })
+    # AAPCS r1 normally receives the explicit sJpegOp& argument, but
+    # symbol signatures and static prologue are not runtime proof.
+    incoming_arg1_saved_candidacy=(
+        len(slot_writers)==1 and
+        slot_writers[0]["source_register"]=="r1" and
+        slot_writers[0]["condition_arm"]==14
+    )
+    incoming_object_r0_saved_candidacy=(
+        len(slot_writers)==1 and
+        slot_writers[0]["source_register"]=="r0" and
+        slot_writers[0]["condition_arm"]==14
+    )
+    return {
+        "native_function":FUNCTION,
+        "function_address":f"0x{start:08x}",
+        "function_words":len(words),
+        "arm_instruction_hash_sha256":
+            hashlib.sha256(struct.pack("<"+"I"*len(words),*words)).hexdigest(),
+        "base_pointer_load_site":f"0x{start+4*pointer_load:08x}",
+        "base_pointer_register":"r3",
+        "base_pointer_source_register":"fp",
+        "base_pointer_stack_offset":base["offset"],
+        "r6_field_load_site":f"0x{start+4*load:08x}",
+        "field_load_expression":"LDR r6, [r3, #12]",
+        "field_byte_offset":FIELD_BYTE_OFFSET,
+        "blx_register_site":f"0x{start+4*call:08x}",
+        "blx_register":"r6",
+        "stack_slot_store_candidates":slot_writers,
+        "incoming_sJpegOp_r1_saved_to_slot_candidate":
+            incoming_arg1_saved_candidacy,
+        "incoming_object_this_r0_saved_to_slot_candidate":
+            incoming_object_r0_saved_candidacy,
+        "cpp_aapcs_this_pointer_runtime_identity_proven":False,
+        "incoming_arg_r1_is_live_sJpegOp_proven":False,
+        "stack_alias_and_control_flow_checked":False,
+        "indirect_call_runtime_target_proven":False,
+        "hal_encode_target_proven":False,
+        "live_capture_buffer_ownership_proven":False,
+        "camera_install_or_flash_permitted":False,
+    }
+
+
+def arm_mov_immediate_zero(word:int,register:int)->bool:
+    """ARM unconditional MOV Rd, #0 (not a register MOV or post-index)."""
+    return (word>>28)==14 and (word&0x0fe00000)==0x03a00000 and (
+        (word>>12)&15
+    )==register and (word&0xfff)==0
+
+
+def constructor_field_store_candidates(
+    path: Path, segments: list[tuple[int,int,int]],
+    symbols: dict[str,dict], *,
+    prefixes: tuple[str,...]=("DscJfif::DscJfif(",
+                            "DscJPEG::DscJPEG(","DscJPEG::Instance(")
+)->list[dict]:
+    """Look for [+12] assignments in *actual* JPEG instance constructors.
+
+    This discovers writes, but never asserts that an arbitrary [+12] store
+    initializes the DscJfif::JpegEncode callback or that constructor ran.
+    """
+    methods=[dict(info,name=name) for name,info in symbols.items()
+             if info["kind"]=="FUNC" and name.startswith(prefixes)]
+    methods=sorted(methods,key=lambda m:(m["address"],m["name"]))
+    if not methods or len(methods)>24:
+        raise ValueError("Missing or ambiguous bounded JPEG constructor inventory")
+    output=[]
+    with path.open("rb") as stream:
+        for func in methods:
+            address=func["address"];size=func["size"]
+            if address&3 or size&3 or not 4<=size<=4096:
+                continue
+            off=elf.file_range_for_vaddr(segments,address,size)
+            stream.seek(off)
+            blob=stream.read(size)
+            if len(blob)!=size:
+                raise ValueError("Truncated JPEG constructor ARM body")
+            words=struct.unpack("<"+"I"*(size//4),blob)
+            stores=[]
+            for i,op in enumerate(words):
+                info=decode_mem_word(op)
+                if (info and info["kind"]=="STR" and
+                    info["offset"]==FIELD_BYTE_OFFSET):
+                    if len(stores)>=30:
+                        raise ValueError("Unbounded [+12] constructor stores")
+                    stores.append({
+                        "site":"0x%08x"%(address+4*i),
+                        "base_register":"r"+str(info["base_register"]),
+                        "value_register":"r"+str(info["data_register"]),
+                        "condition_arm":info["condition"],
+                        "preceding_arm_words":[
+                            {"site":"0x%08x"%(address+4*j),
+                             "opcode":"0x%08x"%words[j]}
+                            for j in range(max(0,i-14),i+1)
+                        ],
+                        "pointer_base_prior_writers":
+                            sif.register_writer_candidates(
+                                list(words),i,info["base_register"]
+                            ),
+                        "stored_value_prior_writers":
+                            sif.register_writer_candidates(
+                                list(words),i,info["data_register"]
+                            ),
+                        "static_store_targets_live_jfif_object_proven":False,
+                        "immediately_prior_arm_mov_zero":
+                            i>=1 and arm_mov_immediate_zero(
+                                words[i-1],info["data_register"]
+                            ),
+                        "stored_value_is_hal_encode_callback_proven":False,
+                    })
+            output.append({
+                "function":func["name"][:180],
+                "address":"0x%08x"%address,
+                "function_bytes":size,
+                "stores_into_any_base_plus12":stores,
+                "actual_dscjfif_this_object_proven":False,
+                "callback_assignment_proven":False,
+            })
+    return output
+
+
+def decode_hal_registration_words(words:list[int],start:int)->dict:
+    """Match unambiguous straight-line tDscHal* -> DscJfif field copies.
+
+    AAPCS method arguments: r0=this, r1=tDscHal*. The compiler stores both
+    into the stack and copies table slots 0,4,8 into instance slots 4,8,12.
+    Proves only those ARM instructions; not what address each slot contains.
+    """
+    if start&3 or not 12<=len(words)<=128:
+        raise ValueError("Invalid bounded HalRegister ARM function")
+    def mem(index):
+        return decode_mem_word(words[index])
+    def matches(index,kind,reg,base,offset):
+        value=mem(index)
+        return value is not None and (
+            value["kind"],value["data_register"],
+            value["base_register"],value["offset"],value["condition"]
+        )==(kind,reg,base,offset,14)
+    stack_a=[i for i in range(len(words))
+             if matches(i,"STR",0,11,-8)]
+    stack_b=[i for i in range(len(words))
+             if matches(i,"STR",1,11,-12)]
+    if len(stack_a)!=1 or len(stack_b)!=1:
+        raise ValueError("Missing unique C++ this/tDscHal* stack arguments")
+    pairs=[]
+    for source_offset,target_offset in ((0,4),(4,8),(8,12)):
+        sites=[]
+        for i in range(0,len(words)-3):
+            if (matches(i,"LDR",3,11,-12) and
+                matches(i+1,"LDR",2,3,source_offset) and
+                matches(i+2,"LDR",3,11,-8) and
+                matches(i+3,"STR",2,3,target_offset)):
+                sites.append(i)
+        if len(sites)!=1 or sites[0]<=max(stack_a[0],stack_b[0]):
+            raise ValueError(
+                "Missing or ambiguous tDscHal -> DscJfif field copy "+
+                str(source_offset)+"->"+str(target_offset)
+            )
+        i=sites[0]
+        pairs.append({
+            "tDscHal_input_field_offset":source_offset,
+            "dscjfif_object_field_offset":target_offset,
+            "load_hal_argument_site":f"0x{start+4*i:08x}",
+            "read_callback_slot_site":f"0x{start+4*(i+1):08x}",
+            "load_this_argument_site":f"0x{start+4*(i+2):08x}",
+            "write_jfif_slot_site":f"0x{start+4*(i+3):08x}",
+            "runtime_pointer_value_verified":False,
+        })
+    return {
+        "function":"DscJfif::HalRegister(tDscHal*)",
+        "native_address":f"0x{start:08x}",
+        "this_r0_stack_site":f"0x{start+4*stack_a[0]:08x}",
+        "hal_pointer_r1_stack_site":f"0x{start+4*stack_b[0]:08x}",
+        "static_arm_exact_field_copies":pairs,
+        "jfif_encode_callback_object_plus12_from_hal_plus8":True,
+        "runtime_hal_callback_address_proven":False,
+        "hardware_encode_is_third_callback_slot_proven":False,
+        "camera_firmware_flash_permitted":False,
+    }
+
+
+def inspect_hal_register(path:Path,
+                         segments:list[tuple[int,int,int]],
+                         symbols:dict[str,dict])->dict:
+    fn=sif.select(symbols,"DscJfif::HalRegister(","FUNC")
+    address,size=fn["address"],fn["size"]
+    if address&3 or size&3 or not 48<=size<=512:
+        raise ValueError("Unexpected native HalRegister body size")
+    offset=elf.file_range_for_vaddr(segments,address,size)
+    with path.open("rb") as stream:
+        stream.seek(offset)
+        blob=stream.read(size)
+    if len(blob)!=size:
+        raise ValueError("Truncated native HalRegister function")
+    return decode_hal_registration_words(
+        list(struct.unpack("<"+"I"*(size//4),blob)),address
+    )
+
+
+def inspect(path:Path)->dict:
+    if path.is_symlink() or not path.is_file():
+        raise ValueError("Missing private regular libsif ELF")
+    # Decode symbol from actual same-version ELF, no old offset guesses.
+    sym=sif.symbol_index(sif.arm.offline_tool(
+        ["readelf","-Ws",str(path)]))
+    func=sif.select(sym,FUNCTION,"FUNC")
+    address=func["address"];size=func["size"]
+    if address&3 or size&3 or not 16<=size<=MAX_WORDS*4:
+        raise ValueError("Unsupported ARM function code range")
+    segments=elf.program_headers(path)
+    offset=elf.file_range_for_vaddr(segments,address,size)
+    with path.open("rb") as f:
+        f.seek(offset)
+        content=f.read(size)
+    if len(content)!=size:
+        raise ValueError("Truncated native function body")
+    values=list(struct.unpack("<"+"I"*(size//4),content))
+    out=select_provenance(values,address)
+    out["jpeg_constructor_field_store_inventory"]=constructor_field_store_candidates(
+        path,segments,sym
+    )
+    jfif_ctor=[
+        item for item in out["jpeg_constructor_field_store_inventory"]
+        if item["function"]=="DscJfif::DscJfif()"
+    ]
+    out["dscjfif_constructor_plus12_set_to_zero"]=(
+        len(jfif_ctor)==1 and
+        len(jfif_ctor[0]["stores_into_any_base_plus12"])==1 and
+        jfif_ctor[0]["stores_into_any_base_plus12"][0][
+            "immediately_prior_arm_mov_zero"
+        ] is True
+    )
+    out["other_jfif_methods_writing_plus12"]=[
+        item for item in constructor_field_store_candidates(
+            path,segments,sym,prefixes=("DscJfif::",)
+        ) if item["function"]!="DscJfif::DscJfif()" and
+        item["stores_into_any_base_plus12"]
+    ]
+    out["other_methods_plus12_matches_real_runtime_callback"]=False
+    out["hal_registration_pointer_field_mapping"]=inspect_hal_register(
+        path,segments,sym
+    )
+    out["dscjfif_plus12_callback_initializer_proven"]=False
+    out["mirror_source_is_vendor_authenticated"]=False
+    return out
+
+
+def compare_versions(p114:Path,p115:Path)->dict:
+    return {
+        "fw114":inspect(p114),
+        "fw115":inspect(p115),
+        "scope":"UNOFFICIAL_MIRROR_ARM32_STATIC_ONLY",
+        "hardware_codec_pointer_proven":False,
+        "camera_recovery_and_install_permitted":False,
+    }

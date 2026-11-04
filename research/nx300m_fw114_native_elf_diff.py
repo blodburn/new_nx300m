@@ -27,6 +27,7 @@ import nx300m_fw114_function_proofs as focus
 import nx300m_fw114_capture_jpeg_route as static_route
 import nx300m_fw114_sif_callgraph as sif_graph
 import nx300m_fw114_sif_virtual_dispatch as sif_virtual
+import nx300m_fw114_jfif_r6_arg_provenance as jfif_arg
 import nx300m_fw114_arm_loader_abi as arm_loader
 import nx300m_fw114_runtime_linkage_audit as runtime_linkage
 
@@ -346,6 +347,9 @@ def analyze(archives: dict[str, Path], private_root: Path,
         sif_virtual_dispatch = sif_virtual.compare_versions(
             route_paths["1.14"][static_route.SIF],
             route_paths["1.15"][static_route.SIF])
+        jfif_r6_provenance = jfif_arg.compare_versions(
+            route_paths["1.14"][static_route.SIF],
+            route_paths["1.15"][static_route.SIF])
         return {
             "scope": "UNOFFICIAL_MIRROR_OFFLINE_HOST_ONLY",
             "source_chain_of_custody_confirmed": False,
@@ -356,6 +360,7 @@ def analyze(archives: dict[str, Path], private_root: Path,
             "capture_to_jpeg_static_route": route,
             "version_specific_sif_jpeg_exif_callgraph": sif_calls,
             "version_specific_sif_virtual_dispatch": sif_virtual_dispatch,
+            "jfif_encode_r6_argument_provenance": jfif_r6_provenance,
             "camera_flash_permitted": False,
             "camera_isp_buffer_contract_verified": False,
             "camera_recovery_procedure_verified": False,
