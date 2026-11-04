@@ -199,6 +199,84 @@ def constructor_field_store_candidates(
     return output
 
 
+def decode_hal_registration_words(words:list[int],start:int)->dict:
+    """Match unambiguous straight-line tDscHal* -> DscJfif field copies.
+
+    AAPCS method arguments: r0=this, r1=tDscHal*. The compiler stores both
+    into the stack and copies table slots 0,4,8 into instance slots 4,8,12.
+    Proves only those ARM instructions; not what address each slot contains.
+    """
+    if start&3 or not 12<=len(words)<=128:
+        raise ValueError("Invalid bounded HalRegister ARM function")
+    def mem(index):
+        return decode_mem_word(words[index])
+    def matches(index,kind,reg,base,offset):
+        value=mem(index)
+        return value is not None and (
+            value["kind"],value["data_register"],
+            value["base_register"],value["offset"],value["condition"]
+        )==(kind,reg,base,offset,14)
+    stack_a=[i for i in range(len(words))
+             if matches(i,"STR",0,11,-8)]
+    stack_b=[i for i in range(len(words))
+             if matches(i,"STR",1,11,-12)]
+    if len(stack_a)!=1 or len(stack_b)!=1:
+        raise ValueError("Missing unique C++ this/tDscHal* stack arguments")
+    pairs=[]
+    for source_offset,target_offset in ((0,4),(4,8),(8,12)):
+        sites=[]
+        for i in range(0,len(words)-3):
+            if (matches(i,"LDR",3,11,-12) and
+                matches(i+1,"LDR",2,3,source_offset) and
+                matches(i+2,"LDR",3,11,-8) and
+                matches(i+3,"STR",2,3,target_offset)):
+                sites.append(i)
+        if len(sites)!=1 or sites[0]<=max(stack_a[0],stack_b[0]):
+            raise ValueError(
+                "Missing or ambiguous tDscHal -> DscJfif field copy "+
+                str(source_offset)+"->"+str(target_offset)
+            )
+        i=sites[0]
+        pairs.append({
+            "tDscHal_input_field_offset":source_offset,
+            "dscjfif_object_field_offset":target_offset,
+            "load_hal_argument_site":f"0x{start+4*i:08x}",
+            "read_callback_slot_site":f"0x{start+4*(i+1):08x}",
+            "load_this_argument_site":f"0x{start+4*(i+2):08x}",
+            "write_jfif_slot_site":f"0x{start+4*(i+3):08x}",
+            "runtime_pointer_value_verified":False,
+        })
+    return {
+        "function":"DscJfif::HalRegister(tDscHal*)",
+        "native_address":f"0x{start:08x}",
+        "this_r0_stack_site":f"0x{start+4*stack_a[0]:08x}",
+        "hal_pointer_r1_stack_site":f"0x{start+4*stack_b[0]:08x}",
+        "static_arm_exact_field_copies":pairs,
+        "jfif_encode_callback_object_plus12_from_hal_plus8":True,
+        "runtime_hal_callback_address_proven":False,
+        "hardware_encode_is_third_callback_slot_proven":False,
+        "camera_firmware_flash_permitted":False,
+    }
+
+
+def inspect_hal_register(path:Path,
+                         segments:list[tuple[int,int,int]],
+                         symbols:dict[str,dict])->dict:
+    fn=sif.select(symbols,"DscJfif::HalRegister(","FUNC")
+    address,size=fn["address"],fn["size"]
+    if address&3 or size&3 or not 48<=size<=512:
+        raise ValueError("Unexpected native HalRegister body size")
+    offset=elf.file_range_for_vaddr(segments,address,size)
+    with path.open("rb") as stream:
+        stream.seek(offset)
+        blob=stream.read(size)
+    if len(blob)!=size:
+        raise ValueError("Truncated native HalRegister function")
+    return decode_hal_registration_words(
+        list(struct.unpack("<"+"I"*(size//4),blob)),address
+    )
+
+
 def inspect(path:Path)->dict:
     if path.is_symlink() or not path.is_file():
         raise ValueError("Missing private regular libsif ELF")
@@ -239,6 +317,9 @@ def inspect(path:Path)->dict:
         item["stores_into_any_base_plus12"]
     ]
     out["other_methods_plus12_matches_real_runtime_callback"]=False
+    out["hal_registration_pointer_field_mapping"]=inspect_hal_register(
+        path,segments,sym
+    )
     out["dscjfif_plus12_callback_initializer_proven"]=False
     out["mirror_source_is_vendor_authenticated"]=False
     return out
