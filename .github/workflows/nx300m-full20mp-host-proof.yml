@@ -1,0 +1,41 @@
+name: NX300M FW114 host full 20.6MP streamed JPEG and Exif
+on:
+  push:
+    paths:
+      - ".github/workflows/nx300m-full20mp-host-proof.yml"
+      - "research/test_nx300m_full20mp_stream_exif.c"
+      - "research/test_nx300m_full20mp_stream_exif.py"
+      - "research/nx300m_host_freestanding420_jpeg.c"
+      - "Makefile"
+  pull_request:
+    paths:
+      - ".github/workflows/nx300m-full20mp-host-proof.yml"
+      - "research/test_nx300m_full20mp_stream_exif.c"
+      - "research/test_nx300m_full20mp_stream_exif.py"
+      - "research/nx300m_host_freestanding420_jpeg.c"
+      - "Makefile"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  full-20mp-host:
+    name: Synthetic 5546x3714 no-libc-row JPEG/Exif and host RSS
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run full-size offline host proof
+        shell: bash
+        run: |
+          set -euo pipefail
+          make full20mp-test | tee "$RUNNER_TEMP/full20mp.log"
+          grep -q '^PASS full 20.6MP HOST-only streamed LUT65 JPEG' "$RUNNER_TEMP/full20mp.log"
+          grep -q '"all_test_jpegs_deleted_after_verification": true' "$RUNNER_TEMP/full20mp.log"
+          grep -q '"real_camera_20mp_verified": false' "$RUNNER_TEMP/full20mp.log"
+          echo '20.6 MP synthetic host pipeline PASS. No FW1.14 camera ABI or on-device memory proof.' >> "$GITHUB_STEP_SUMMARY"
+      - name: Remove all synthetic test output
+        if: always()
+        shell: bash
+        run: |
+          rm -f .build/test_nx300m_full20mp_stream_exif
+          find outputs -maxdepth 1 -type d -name 'nx300m_full20_*' -exec rm -rf -- {} +
