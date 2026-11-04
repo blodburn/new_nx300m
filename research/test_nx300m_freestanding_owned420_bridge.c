@@ -173,6 +173,66 @@ static void test_one(render_fn render,rows_fn render_rows,
         "96 synthetic pixels, exact host parity, one-row and three-row "
         "stripes, invalid spans + padding + read-only planes\n",grid,order);
 }
+/* 20.6MP geometry gate: bounded one-row RGB output, not a camera
+ * memory benchmark or a claim about NX300M native strides/format.
+ */
+static void test_full_geometry(rows_fn render_rows){
+ enum { W=5546,H=3714,PAD=8 };
+ const size_t yn=(size_t)W*H,cn=yn/2u;
+ const size_t stride=(size_t)W*3u+PAD;
+ uint8_t *y=malloc(yn),*c=malloc(cn),*rgb=malloc(stride);
+ assert(y&&c&&rgb);
+ memset(y,111,yn);
+ memset(c,151,cn);
+ nx_rgb12 lut[8];
+ for(unsigned b=0;b<2u;b++)
+  for(unsigned g=0;g<2u;g++)
+   for(unsigned r=0;r<2u;r++){
+    const size_t k=(size_t)b*4u+(size_t)g*2u+r;
+    lut[k]=(nx_rgb12){r?4095u:0u,g?4095u:0u,b?4095u:0u,0u};
+   }
+ nx_preview_processor preview;
+ assert(nx_preview_init(&preview)==0);
+ nx_film_owned420_hypothesis_job j={
+    .copy_declaration=NX_FILM_420_COPY_DECLARATION,
+    .hypothesis=NX_FILM_BT601_FULL_CBCR_HYPOTHESIS,
+    .y=y,.y_bytes=yn,.y_stride=W,
+    .chroma=c,.chroma_bytes=cn,.chroma_stride=W,
+    .width=W,.height=H,
+    .decode_srgb=preview.decode_srgb,.decode_entries=256u,
+    .encode_srgb=preview.encode_srgb,.encode_entries=4096u,
+    .lut=lut,.lut_nodes=8u,.grid=2u,
+    .rgb=rgb,.rgb_bytes=stride,.rgb_stride=stride,
+ };
+ uint8_t decoded[3];
+ reference_decode(111u,151u,151u,decoded);
+ nx_rgb12 in={preview.decode_srgb[decoded[0]],
+              preview.decode_srgb[decoded[1]],
+              preview.decode_srgb[decoded[2]],0u},out;
+ assert(nx_lut_grid_host_apply(lut,2u,&in,&out,1u)==0);
+ const uint8_t want[3]={preview.encode_srgb[out.r],
+                         preview.encode_srgb[out.g],
+                         preview.encode_srgb[out.b]};
+ const unsigned rows[]={0u,1u,H-2u,H-1u};
+ for(unsigned k=0;k<sizeof(rows)/sizeof(rows[0]);k++){
+  memset(rgb,0xcc,stride);
+  assert(render_rows(&j,rows[k],1u)==0);
+  for(unsigned x=0;x<W;x++)
+   for(unsigned ch=0;ch<3u;ch++)
+    assert(rgb[(size_t)x*3u+ch]==want[ch]);
+  for(size_t x=(size_t)W*3u;x<stride;x++)
+   assert(rgb[x]==0xccu);
+ }
+ memset(rgb,0xcc,stride);
+ j.rgb_bytes=(size_t)W*3u-1u;
+ assert(render_rows(&j,H-1u,1u)==-1);
+ for(size_t x=0;x<stride;x++)assert(rgb[x]==0xccu);
+ assert(y[0]==111u&&y[yn-1u]==111u&&c[0]==151u&&c[cn-1u]==151u);
+ free(rgb);free(c);free(y);
+ printf("PASS owned420 5546x3714: full geometry, 16638-byte output row, "
+        "first/last odd/even indices, stride guards and fail-closed bounds\\n");
+}
+
 int main(int argc,char **argv){
  assert(argc==2);
  void *h=dlopen(argv[1],RTLD_NOW|RTLD_LOCAL);
@@ -186,6 +246,7 @@ int main(int argc,char **argv){
  pointer=dlsym(h,"nx_film_core_render_owned420_rows_hypothesis");
  assert(pointer);
  rows_fn render_rows=(rows_fn)pointer;
+ test_full_geometry(render_rows);
  for(unsigned grid=2u;grid<=65u;grid=(grid==2u?18u:66u))
   for(unsigned order=1u;order<=2u;order++)
    test_one(render,render_rows,grid,order);
