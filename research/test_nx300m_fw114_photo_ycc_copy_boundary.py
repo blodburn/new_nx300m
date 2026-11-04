@@ -28,6 +28,38 @@ class NativeYccBufferBoundaryTests(unittest.TestCase):
             with self.subTest(site=site),self.assertRaises(ValueError):
                 audit.site_window(words,0x4000,site)
 
+    def test_real_jpeg_abi_r0_r3_register_marshal(self):
+        start=0x34b18
+        words=[0xe1a00000]*((0x34d78-start)//4+1)
+        for address,op in (
+            (0x34cc0,0xe1a06003),
+            (0x34cd0,0xe1a05003),
+            (0x34ce0,0xe1a04003),
+            (0x34cf0,0xe1a09003),
+            (0x34d00,0xe1a0a003),
+            (0x34d10,0xe1a08003),
+            (0x34d68,0xe1a00007),
+            (0x34d6c,0xe1a01006),
+            (0x34d70,0xe1a02005),
+            (0x34d74,0xe1a03004),
+        ):
+            words[(address-start)//4]=op
+        got=audit.validate_jpeg_abi_marshal(tuple(words),start)
+        self.assertEqual(
+            [x["argument"] for x in got[
+                "DscImage_EncodeYCC_first_four_arm_args"]],
+            ["DscImage instance","Y0","Y1","C0"])
+        self.assertEqual(got["JPEG_callsite"],"0x00034d78")
+        self.assertFalse(got["safe_copy_insertion_proven"])
+        self.assertFalse(got["photography_live_pixel_input_dma_owned"])
+        words[(0x34d74-start)//4]=0xe1a03005 # accidentally passes Y1 as C0
+        with self.assertRaisesRegex(ValueError,"register ABI"):
+            audit.validate_jpeg_abi_marshal(tuple(words),start)
+        words[(0x34d74-start)//4]=0xe1a03004
+        words[(0x34ce0-start)//4]=0xe1a04005 # wrong C0 getter copy
+        with self.assertRaisesRegex(ValueError,"getter return"):
+            audit.validate_jpeg_abi_marshal(tuple(words),start)
+
     def test_unbounded_method_or_non_arm_function_rejects(self):
         import struct
         words=struct.pack("<II",0xe1a00000,0xe12fff1e)
