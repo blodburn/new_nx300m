@@ -82,6 +82,30 @@ class FirmwareVirtualDispatchTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             audit.relocations("No relocations")
 
+    def test_arm_abs32_zero_addend_resolved_by_relocation_symbol(self):
+        # Shared object vtable slots can contain zero before the dynamic
+        # loader resolves their R_ARM_ABS32 target symbol. This is not NULL.
+        text=(
+            "Relocation section '.rel.dyn' at offset 0x0 contains 2 entries:\n"
+            "0006c1bc  00010002 R_ARM_ABS32 0006c1c8 _ZTI7DscJfif\n"
+            "0006c1c4  00020002 R_ARM_ABS32 00028a88 "
+            "_ZN7DscJfif10JpegEncodeER7sJpegOpb\n"
+        )
+        d=audit.relocation_symbol_targets(text)
+        self.assertEqual(d[0x6c1c4]["mangled_symbol"],
+                         "_ZN7DscJfif10JpegEncodeER7sJpegOpb")
+        self.assertEqual(d[0x6c1c4]["symbol_value"],"0x00028a88")
+        self.assertEqual(d[0x6c1bc]["relocation_type"],"R_ARM_ABS32")
+        self.assertEqual(d[0x6c1bc]["mangled_symbol"],"_ZTI7DscJfif")
+
+    def test_relocation_target_conflict_is_rejected(self):
+        text=(
+            "0006c1c4  00020002 R_ARM_ABS32 00028a88 A\n"
+            "0006c1c4  00030002 R_ARM_ABS32 00028a88 B\n"
+        )
+        with self.assertRaisesRegex(ValueError,"Conflicting relocations"):
+            audit.relocation_symbol_targets(text)
+
     def test_function_or_vtable_rejected_if_missing_or_ambiguous(self):
         index={
             "vtable for DscJfif":{"address":0x6c1b8,"size":16,"kind":"OBJECT"},
