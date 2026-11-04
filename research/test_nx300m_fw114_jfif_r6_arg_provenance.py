@@ -55,7 +55,7 @@ class ARMJpegArgProvenanceTests(unittest.TestCase):
     def test_bad_stack_pointer_path_fails_closed(self):
         words=PROLOGUE.copy()
         words[2]=0xe5933030
-        with self.assertRaisesRegex(ValueError,"pointer"):
+        with self.assertRaisesRegex(ValueError,"r3"):
             prov.select_provenance(words,START)
         words=PROLOGUE.copy()
         words.insert(3,0xe51b302c)
