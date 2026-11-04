@@ -86,6 +86,11 @@ def select_provenance(words: list[int], start: int) -> dict:
         slot_writers[0]["source_register"]=="r1" and
         slot_writers[0]["condition_arm"]==14
     )
+    incoming_object_r0_saved_candidacy=(
+        len(slot_writers)==1 and
+        slot_writers[0]["source_register"]=="r0" and
+        slot_writers[0]["condition_arm"]==14
+    )
     return {
         "native_function":FUNCTION,
         "function_address":f"0x{start:08x}",
@@ -104,6 +109,9 @@ def select_provenance(words: list[int], start: int) -> dict:
         "stack_slot_store_candidates":slot_writers,
         "incoming_sJpegOp_r1_saved_to_slot_candidate":
             incoming_arg1_saved_candidacy,
+        "incoming_object_this_r0_saved_to_slot_candidate":
+            incoming_object_r0_saved_candidacy,
+        "cpp_aapcs_this_pointer_runtime_identity_proven":False,
         "incoming_arg_r1_is_live_sJpegOp_proven":False,
         "stack_alias_and_control_flow_checked":False,
         "indirect_call_runtime_target_proven":False,
