@@ -109,7 +109,7 @@ clean:
 # Host-only no-libc C kernel. Program harness uses host libc/dlopen;
 # libnx300m_filmcore_nolibc.so is linked WITHOUT libc/crt/libgcc.
 freestanding-test:
-	@mkdir -p .build
+	@mkdir -p .build outputs
 	$(CC) -std=c11 -O2 -Wall -Wextra -Werror \
 	  -fPIC -ffreestanding -fno-builtin -fno-stack-protector \
 	  -fvisibility=hidden -shared -nostdlib -nostartfiles -nodefaultlibs \
