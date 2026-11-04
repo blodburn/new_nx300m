@@ -263,6 +263,9 @@ jobs:
               for name,item in a["recognized_methods"].items():
                   print("FW_SIF_VTABLE_METHOD",v,name,item["function_address"],
                         "OFFSETS",item["vtable_matching_slot_offsets"])
+              print("FW_SIF_TASKMAIN_DIRECT_ARM_BL",v,
+                    a["taskmain_direct_arm_bl_count"],
+                    "JPEG_NAMES",a["taskmain_direct_resolved_jpeg_edges"])
               for rel in a["jpeg_related_relocation_targets"]:
                   print("FW_SIF_RELOCATED_JPEG_CALLBACK",v,
                         rel["relocation_vaddr"],
