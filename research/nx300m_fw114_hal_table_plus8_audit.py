@@ -26,6 +26,7 @@ MAX_SOURCE=2*1024*1024
 MAX_METHOD=4096
 METHODS=(
     "DscJfif::HalRegister(",
+    "DscImage::DscJpegInstance(",
     "DscJPEG::DscJPEG(unsigned long",
     "DscJPEG::Instance(",
     "DscJfif::DscJfif()",
@@ -118,6 +119,7 @@ def inspect(path:Path)->dict:
         focus[prefix]=native_method(path,data,segments,symbols,prefix,defined,relocs)
     ctor=focus["DscJPEG::DscJPEG(unsigned long"]
     instance=focus["DscJPEG::Instance("]
+    image_producer=focus["DscImage::DscJpegInstance("]
     def evidence(data:dict)->list[dict]:
         return [x for x in data["identified_direct_calls"] if
                 "HalRegister" in x["target_symbol"] or
@@ -129,6 +131,9 @@ def inspect(path:Path)->dict:
         "method_evidence":focus,
         "jpeg_constructor_relevant_direct_calls":evidence(ctor),
         "jpeg_instance_relevant_direct_calls":evidence(instance),
+        "dscimage_jpeg_instance_relevant_calls":evidence(image_producer),
+        "dscimage_jpeg_instance_plus8_writes":
+            image_producer["direct_plus8_store_candidates"],
         "hal_encoder_symbol":"DscJfifHal::Encode",
         "hal_encoder_native_address":"0x%08x"%hal_symbol["address"],
         "hal_encoder_static_got_relocations":hal_got,
