@@ -13,6 +13,8 @@ on:
       - 'research/nx300m_fw114_capture_jpeg_route.py'
       - 'research/nx300m_fw114_sif_callgraph.py'
       - 'research/test_nx300m_fw114_sif_callgraph.py'
+      - 'research/nx300m_fw114_sif_virtual_dispatch.py'
+      - 'research/test_nx300m_fw114_sif_virtual_dispatch.py'
       - 'research/test_nx300m_fw114_capture_jpeg_route.py'
       - 'research/test_nx300m_fw114_function_proofs.py'
       - 'research/test_nx300m_fw114_native_elf_diff.py'
@@ -30,6 +32,8 @@ on:
       - 'research/nx300m_fw114_capture_jpeg_route.py'
       - 'research/nx300m_fw114_sif_callgraph.py'
       - 'research/test_nx300m_fw114_sif_callgraph.py'
+      - 'research/nx300m_fw114_sif_virtual_dispatch.py'
+      - 'research/test_nx300m_fw114_sif_virtual_dispatch.py'
       - 'research/test_nx300m_fw114_capture_jpeg_route.py'
       - 'research/test_nx300m_fw114_function_proofs.py'
       - 'research/test_nx300m_fw114_native_elf_diff.py'
@@ -58,6 +62,7 @@ jobs:
           python3 research/test_nx300m_fw114_function_proofs.py
           python3 research/test_nx300m_fw114_capture_jpeg_route.py
           python3 research/test_nx300m_fw114_sif_callgraph.py
+          python3 research/test_nx300m_fw114_sif_virtual_dispatch.py
           python3 research/test_nx300m_fw114_binary_delta.py
 
       - name: Install pinned offline UBI reader in ephemeral venv
@@ -233,6 +238,108 @@ jobs:
           print("PASS read-only FW114 SIF JPEG/EXIF version-specific ARM BL graph; "
                 "NO runtime camera hook proof")
           print("PASS SIF EncodeYCC binding witness; camera ABI still NO-GO")
+          virtual=report["version_specific_sif_virtual_dispatch"]
+          if virtual["camera_function_pointer_runtime_identity_proven"] or (
+              virtual["camera_firmware_modification_permitted"]
+          ):
+              raise SystemExit("REJECT virtual dispatch overstated")
+          for v in ("fw114","fw115"):
+              a=virtual[v]
+              if a["dynamic_dispatch_between_encode_and_codec_proven"] or (
+                  a["camera_patch_or_flash_permitted"]
+              ) or a["vtable_name"]!="vtable for DscJfif":
+                  raise SystemExit("REJECT invalid SIF native vtable metadata")
+              print("FW_SIF_VTABLE",v,a["vtable_start"],
+                    "BYTES",a["vtable_bytes"],"SLOTS",len(a["vtable_slots"]))
+              for slot in a["vtable_slots"]:
+                  print("FW_SIF_VTABLE_SLOT",v,
+                        slot["vtable_byte_offset"],
+                        slot["stored_word"],
+                        slot["relocation"],
+                        slot["target_defined_function"] or "NOT_RESOLVED",
+                        "RELOCATION_SYMBOL",slot["relocation_symbol"] or "NONE",
+                        "REL_SYMBOL_VALUE",slot["relocation_symbol_value"] or "NONE",
+                        "MATCH_DEFINED",slot["relocation_is_defined_function"])
+              for name,item in a["recognized_methods"].items():
+                  print("FW_SIF_VTABLE_METHOD",v,name,item["function_address"],
+                        "OFFSETS",item["vtable_matching_slot_offsets"])
+              print("FW_SIF_TASKMAIN_DIRECT_ARM_BL",v,
+                    a["taskmain_direct_arm_bl_count"],
+                    "JPEG_NAMES",a["taskmain_direct_resolved_jpeg_edges"])
+              expected_captures={
+                  "_ZN7DscJfif9JpegParseER7sJpegOp":"0x0002acbc",
+                  "_ZN7DscJfif10JpegDecodeER7sJpegOp":"0x0002ad04",
+                  "_ZN7DscJfif10JpegEncodeER7sJpegOpb":"0x0002ad5c",
+              }
+              observed={
+                  edge["target_symbol"]:edge["callsite"]
+                  for edge in a["taskmain_direct_resolved_jpeg_edges"]
+                  if edge["target_kind"]=="import"
+              }
+              if not all(observed.get(name)==site for name,site in
+                         expected_captures.items()):
+                  raise SystemExit("REJECT "+v+
+                       " missing exact TaskMain BL->PLT jpeg parse/decode/encode")
+              jfif=a["indirect_elf_functions"]["DscJfif::JpegEncode("]
+              jfif_calls=jfif["sites"]
+              if len(jfif_calls)!=1 or (
+                  jfif_calls[0]["branch_kind"]!="BLX_register"
+              ) or jfif_calls[0]["register"]!="r6" or (
+                  jfif_calls[0]["site_address"]!="0x00028c18"
+              ):
+                  raise SystemExit("REJECT "+v+" missing JpegEncode indirect BLX")
+              writers=jfif_calls[0]["prior_register_writer_candidates"]
+              if not any(w["kind"]=="LDR_immediate" and (
+                  w["source_register"]=="r3"
+              ) and w["source_byte_offset"]==12 for w in writers):
+                  raise SystemExit("REJECT "+v+" missing r6 source +0x0C candidate")
+              if a["recognized_methods"]["DscJfif::JpegEncode("][
+                  "vtable_matching_slot_offsets"
+              ]:
+                  raise SystemExit("REJECT "+v+" unexpected direct JpegEncode vtable")
+              callbacks=a["jpeg_related_relocation_targets"]
+              if not any(x["relocation_type"]=="R_ARM_GLOB_DAT" and (
+                  x["relocation_vaddr"]=="0x0006ce98"
+              ) and x["target_native_symbol"].startswith(
+                  "DscJfifHal::Encode("
+              ) for x in callbacks):
+                  raise SystemExit("REJECT "+v+" missing HAL encode GOT witness")
+              print("PASS_FW114_NATIVE_TASKMAIN_TO_JFIF_ENCODE",v,
+                    "3 exact PLT callsites; JpegEncode r6 +0x0C indirect;"
+                    " HAL Encode GOT reference; runtime target NOT PROVEN")
+              for rel in a["jpeg_related_relocation_targets"]:
+                  print("FW_SIF_RELOCATED_JPEG_CALLBACK",v,
+                        rel["relocation_vaddr"],
+                        rel["relocation_type"],
+                        rel["symbol_value"],
+                        rel["target_native_symbol"],
+                        "RUNTIME_PROVEN",rel["live_callback_invocation_verified"])
+              for fn,entry in a["indirect_elf_functions"].items():
+                  print("FW_SIF_INDIRECT_FUNCTION",v,fn,
+                        "START",entry["function_address"],
+                        "BLX",entry["BLX_register"],
+                        "BX_NONRETURN",entry["BX_register_tail_candidate"],
+                        "LDR_PC",entry["LDR_PC_indirect_tail_candidate"])
+                  for call in entry["sites"]:
+                      print("FW_SIF_INDIRECT_SITE",v,fn,
+                            call["site_address"],call["branch_kind"],
+                            call["register"],
+                            "MEMORY_LOAD_CHAIN",
+                            [(x["target_reg"],x["base_reg"],x["byte_offset"])
+                             for x in call["nearby_register_loads"]],
+                            "TWO_LOAD_CANDIDATE",call["two_load_chain_candidate"])
+                      if (fn in ("DscImage::EncodeYCC(", "DscJfif::JpegEncode(")
+                          or call["site_address"] in (
+                              "0x0002b0bc","0x0002b3e8","0x0002b87c"
+                          )):
+                          print("FW_SIF_REGISTER_WRITES",v,fn,call["site_address"],
+                                call["prior_register_writer_candidates"])
+                          print("FW_SIF_BLX_PRECEDING_WORDS",v,fn,
+                                call["site_address"],call["preceding_arm_words"])
+                          print("FW_SIF_REGISTER_SOURCE_CONTEXT",v,fn,
+                                call["site_address"],call["source_writer_windows"])
+          print("PASS FW1.14/1.15 static SIF vtable and indirect BLX audit; "
+                "camera buffer and on-device hook still NOT VERIFIED")
           print('PASS native ELF FW114/115 file-hash and sampled-symbol delta report')
           PY
 
