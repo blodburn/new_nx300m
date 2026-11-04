@@ -11,6 +11,8 @@ on:
       - 'research/test_nx300m_fw114_arm_loader_abi.py'
       - 'research/nx300m_fw114_function_proofs.py'
       - 'research/nx300m_fw114_capture_jpeg_route.py'
+      - 'research/nx300m_fw114_sif_callgraph.py'
+      - 'research/test_nx300m_fw114_sif_callgraph.py'
       - 'research/test_nx300m_fw114_capture_jpeg_route.py'
       - 'research/test_nx300m_fw114_function_proofs.py'
       - 'research/test_nx300m_fw114_native_elf_diff.py'
@@ -26,6 +28,8 @@ on:
       - 'research/test_nx300m_fw114_arm_loader_abi.py'
       - 'research/nx300m_fw114_function_proofs.py'
       - 'research/nx300m_fw114_capture_jpeg_route.py'
+      - 'research/nx300m_fw114_sif_callgraph.py'
+      - 'research/test_nx300m_fw114_sif_callgraph.py'
       - 'research/test_nx300m_fw114_capture_jpeg_route.py'
       - 'research/test_nx300m_fw114_function_proofs.py'
       - 'research/test_nx300m_fw114_native_elf_diff.py'
@@ -53,6 +57,7 @@ jobs:
           python3 research/test_nx300m_fw114_runtime_linkage_audit.py
           python3 research/test_nx300m_fw114_function_proofs.py
           python3 research/test_nx300m_fw114_capture_jpeg_route.py
+          python3 research/test_nx300m_fw114_sif_callgraph.py
           python3 research/test_nx300m_fw114_binary_delta.py
 
       - name: Install pinned offline UBI reader in ephemeral venv
@@ -177,6 +182,56 @@ jobs:
           for x in runtime["static_libc_and_loader_file_deltas"]:
               print("FW114_TARGET_LIBC_LOADER_FILE",x["name"],
                     "present",x["both_present"],"hash_match",x["sha256_equal"])
+          graph=report["version_specific_sif_jpeg_exif_callgraph"]
+          if graph["inspected_version_specific_functions"]!=7 or (
+              graph["firmware_flash_permitted"] or
+              graph["fully_resolved_runtime_control_flow"] or
+              graph["firmware114_encoder_and_exif_native_abi_verified"] or
+              graph["real_picture_wizard_to_jpeg_hook_verified"]
+          ):
+              raise SystemExit("REJECT SIF graph missing or unsafe")
+          total114=0
+          for f in graph["functions"]:
+              if not f["fw114_address"].startswith("0x") or (
+                  not f["fw115_address"].startswith("0x")
+              ):
+                  raise SystemExit("REJECT missing version-local function address")
+              total114+=f["fw114_direct_bl_candidates"]
+              print("FW114_SIF_CALLGRAPH",f["function"],
+                    "FW114",f["fw114_address"],
+                    "FW115",f["fw115_address"],
+                    "IDENTIFIED_LOCAL",f["fw114_identified_local_bl"],
+                    "PLT_IMPORT",f["fw114_identified_plt_bl"],
+                    "BL_CANDIDATES",f["fw114_direct_bl_candidates"],
+                    "FUNCTION_BODY_MATCH",f["body_sha256_equal"],
+                    "SYMBOLIC_CALLS_MATCH",f["symbolic_calls_equal_in_bounded_sample"])
+          if total114<1:
+              raise SystemExit("REJECT no FW114 SIF ARM BL call evidence")
+          # These are actual version-local ARM BL -> resolved PLT JUMP_SLOT
+          # imports, NOT proof of a camera-tested patch insertion point.
+          by_fn={x["function"]:x for x in graph["functions"]}
+          for v in ("fw114","fw115"):
+              def imports(name):
+                  return [x["target_symbol"] for x in by_fn[name][
+                      v+"_resolved_calls"] if x["target_kind"]=="import"]
+              expected_codec=("bma_open","jpeg_open","jpeg_init",
+                              "jpeg_encoder","jpeg_deInit","jpeg_close")
+              actual=imports("DscJfifHal::Encode(")
+              if not all(x in actual for x in expected_codec):
+                  raise SystemExit("REJECT "+v+" missing native jpeg codec PLT witness")
+              encode=imports("DscImage::EncodeYCC(")
+              exif=imports("DscImage::SaveExifImage(")
+              if not any("DscJpegInstance" in x for x in encode) or (
+                  not any("AllocBuffer" in x for x in encode)
+              ) or not any("DscJpegInstance" in x for x in exif) or (
+                  not any("GetAddress" in x for x in exif)
+              ):
+                  raise SystemExit("REJECT "+v+" incomplete JPEG/EXIF dispatcher boundary")
+              print("PASS_FW_SIF_JPEG_CODEC_IMPORTS",v,
+                    ",".join(expected_codec),
+                    "BUT_NO_CAMERA_HOOK_PROVEN")
+          print("PASS read-only FW114 SIF JPEG/EXIF version-specific ARM BL graph; "
+                "NO runtime camera hook proof")
           print("PASS SIF EncodeYCC binding witness; camera ABI still NO-GO")
           print('PASS native ELF FW114/115 file-hash and sampled-symbol delta report')
           PY
