@@ -91,6 +91,129 @@ def arm_argument_window(words:tuple[int,...],start:int,site:int)->dict:
     }
 
 
+def elf_arm_word(image:bytes,segs:list[tuple[int,int,int]],vaddr:int)->int:
+    if vaddr&3:
+        raise ValueError("Unaligned ARM literal or GOT read")
+    off=elf.file_range_for_vaddr(segs,vaddr,4)
+    if off+4>len(image):
+        raise ValueError("Read outside same-version ELF data")
+    return struct.unpack_from("<I",image,off)[0]
+
+
+def decode_pic_r4(
+    image:bytes,segments:list[tuple[int,int,int]],
+    words:tuple[int,...],function_vaddr:int,first_pointer_load:int
+)->dict:
+    """Determine ARM PIC r4 GOT base from actual LDR literal; ADD pc,r4."""
+    found=[]
+    for i in range(first_pointer_load):
+        w=words[i]
+        # ARM ADD r4, pc, r4, register operand with no shifts.
+        if not (
+            (w>>28)==14 and ((w>>26)&3)==0 and ((w>>25)&1)==0
+            and ((w>>21)&15)==4 and ((w>>20)&1)==0
+            and ((w>>16)&15)==15 and ((w>>12)&15)==4
+            and ((w>>4)&255)==0 and (w&15)==4
+        ):
+            continue
+        possible=[]
+        for j in range(i):
+            src=arg.decode_mem_word(words[j])
+            if (src and src["kind"]=="LDR" and
+                src["data_register"]==4 and src["base_register"]==15):
+                possible.append((j,src))
+        if not possible:
+            continue
+        site,load=possible[-1]
+        literal_addr=function_vaddr+4*site+8+load["offset"]
+        relative_offset=elf_arm_word(image,segments,literal_addr)
+        base=(relative_offset+function_vaddr+4*i+8)&0xffffffff
+        found.append({
+            "got_pic_base":"0x%08x"%base,
+            "ldr_r4_literal_site":"0x%08x"%(function_vaddr+4*site),
+            "ldr_r4_literal_vaddr":"0x%08x"%literal_addr,
+            "add_r4_pc_site":"0x%08x"%(function_vaddr+4*i),
+            "source_literal":"0x%08x"%relative_offset,
+        })
+    if len(found)!=1:
+        raise ValueError("Missing or ambiguous ARM PIC r4 base initializer")
+    return found[0]
+
+
+def resolve_initializer_four_fields(
+    image:bytes,segments:list[tuple[int,int,int]],
+    words:tuple[int,...],start:int,
+    relocations:dict[int,dict]
+)->dict:
+    """Prove exact four ARM GOT loads -> stack tDscHal slots -> r3 call arg.
+
+    This is a byte-level version-local static proof, not execution evidence.
+    The four stored values are symbol-address pointers loaded through
+    R_ARM_GLOB_DAT relocations, NOT copies from the photo input buffer.
+    """
+    addresses=(0x00053fc8,0x00053fd4,0x00053fe0,0x00053fec)
+    if start!=0x00053f80:
+        raise ValueError("Unrecognized original FW114 JPEG Instance entry")
+    pic=decode_pic_r4(image,segments,words,start,(addresses[0]-start)//4)
+    got_base=int(pic["got_pic_base"],16)
+    fields=[]
+    for ix,addr in enumerate(addresses):
+        j=(addr-start)//4
+        if j+2>=len(words):
+            raise ValueError("Truncated tDscHal construction")
+        load=arg.decode_mem_word(words[j])
+        if not load or (
+            load["kind"],load["base_register"],load["data_register"],
+            load["condition"]
+        )!=("LDR",15,3,14):
+            raise ValueError("Missing native PC-relative callback GOT index")
+        if words[j+1]!=0xe7943003: # LDR r3,[r4,r3]
+            raise ValueError("Missing PIC GOT slot load into r3")
+        store=arg.decode_mem_word(words[j+2])
+        if not store or (
+            store["kind"],store["base_register"],store["data_register"],
+            store["offset"],store["condition"]
+        )!=("STR",11,3,-28+4*ix,14):
+            raise ValueError("Missing exact callback pointer store to fp-local table")
+        literal_site=addr+8+load["offset"]
+        index=elf_arm_word(image,segments,literal_site)
+        got_addr=(got_base+index)&0xffffffff
+        reloc=relocations.get(got_addr)
+        if reloc is None or reloc["relocation_type"]!="R_ARM_GLOB_DAT":
+            raise ValueError("Unresolved ARM GOT dynamic symbol in tDscHal constructor")
+        fields.append({
+            "tDscHal_field_offset":4*ix,
+            "stack_slot":"fp%+d"%(-28+4*ix),
+            "got_slot":"0x%08x"%got_addr,
+            "got_index_literal":"0x%08x"%literal_site,
+            "got_index":"0x%08x"%index,
+            "dynamic_relocation_type":reloc["relocation_type"],
+            "mangled_native_symbol":reloc["mangled_symbol"],
+            "native_symbol_value":reloc["symbol_value"],
+            "load_at":"0x%08x"%addr,
+            "store_at":"0x%08x"%(addr+8),
+            "on_camera_pointer_initialized_observed":False,
+        })
+    # SUB r3, fp, #28 ; BL DscJPEG::Instance after setting r0/r1/r2
+    if words[(0x00054004-start)//4]!=0xe24b301c:
+        raise ValueError("Missing tDscHal pointer setup as fourth ARM argument")
+    if not any(x["tDscHal_field_offset"]==8 and (
+            x["mangled_native_symbol"].startswith("_ZN10DscJfifHal6Encode")
+        ) and x["native_symbol_value"]=="0x00029830" for x in fields):
+        raise ValueError("FW114 tDscHal +8 does not resolve to HAL Encode")
+    return {
+        "pic_base_evidence":pic,
+        "stack_table_pointer_setup":"0x00054004",
+        "instance_bl_callsite":"0x00054014",
+        "fields":fields,
+        "tDscHal_plus8_static_reloc_symbol_is_DscJfifHal_Encode":True,
+        "tDscHal_pointer_runtime_lifetime_verified":False,
+        "hardware_callback_invocation_observed":False,
+        "safe_real_isp_buffer_hook_proven":False,
+        "flash_allowed":False,
+    }
+
+
 def native_method(path:Path, image:bytes, segments:list[tuple[int,int,int]],
                   symbols:dict[str,dict],prefix:str,
                   defined:dict[int,str],relocs:dict[int,str]) -> dict:
@@ -151,6 +274,18 @@ def inspect(path:Path)->dict:
     focus={}
     for prefix in METHODS:
         focus[prefix]=native_method(path,data,segments,symbols,prefix,defined,relocs)
+    image_fn=sif.select(symbols,"DscImage::DscJpegInstance(","FUNC")
+    image_addr=image_fn["address"]
+    image_len=image_fn["size"]
+    if image_addr&3 or image_len&3 or not 80<=image_len<=1024:
+        raise ValueError("Unexpected native DscImage Instance ARM body")
+    image_off=elf.file_range_for_vaddr(segments,image_addr,image_len)
+    arm_words=struct.unpack_from(
+        "<"+"I"*(image_len//4),data,image_off
+    )
+    table=resolve_initializer_four_fields(
+        data,segments,arm_words,image_addr,reloc_targets
+    )
     ctor=focus["DscJPEG::DscJPEG(unsigned long"]
     instance=focus["DscJPEG::Instance("]
     image_producer=focus["DscImage::DscJpegInstance("]
@@ -171,6 +306,9 @@ def inspect(path:Path)->dict:
         "hal_encoder_symbol":"DscJfifHal::Encode",
         "hal_encoder_native_address":"0x%08x"%hal_symbol["address"],
         "hal_encoder_static_got_relocations":hal_got,
+        "static_hal_initializer_four_fields":table,
+        "tDscHal_plus8_static_symbol_relocation_verified":
+            table["tDscHal_plus8_static_reloc_symbol_is_DscJfifHal_Encode"],
         "jpeghal_table_plus8_actual_initialization_proven":False,
         "same_tDscHal_table_instance_proven":False,
         "callback_runtime_target_proven":False,
