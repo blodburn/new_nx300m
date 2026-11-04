@@ -104,6 +104,36 @@ def relocations(text:str)->dict[int,str]:
     return result
 
 
+def relocation_symbol_targets(text:str)->dict[int,dict]:
+    """Extract R_ARM_* relocation symbol identity; 0 stored addend is NOT null.
+
+    ARM ELF32 REL R_ARM_ABS32 references may store zero in the raw vtable
+    slot and acquire a function pointer only during dynamic relocation.
+    Require the exact relocation offset, type and symbol, not guessed
+    runtime addresses or adjacent slot positions.
+    """
+    found={}
+    pattern=re.compile(
+        r"^\s*([0-9a-fA-F]+)\s+[0-9a-fA-F]+\s+"
+        r"(R_ARM_[A-Z0-9_]+)\s+([0-9a-fA-F]+)\s+(\S+)"
+    )
+    for line in text.splitlines():
+        hit=pattern.match(line)
+        if not hit:
+            continue
+        addr=int(hit[1],16)
+        name=hit[4].split("@",1)[0]
+        item={
+            "relocation_type":hit[2],
+            "symbol_value":"0x%08x"%int(hit[3],16),
+            "mangled_symbol":name,
+        }
+        if addr in found and found[addr]!=item:
+            reject("Conflicting relocations at same ARM vtable offset")
+        found[addr]=item
+    return found
+
+
 def read_word(data:bytes,loads:list[tuple[int,int,int]],vaddr:int)->int:
     position=focus.file_range_for_vaddr(loads,vaddr,4)
     return struct.unpack_from("<I",data,position)[0]
@@ -220,7 +250,9 @@ def inspect(path:Path)->dict:
         vtable["size"]&3
     ):
         reject("Unexpected DscJfif vtable symbol bounds")
-    relocs=relocations(arm.offline_tool(["readelf","-Wr",str(path)]))
+    relocation_text=arm.offline_tool(["readelf","-Wr",str(path)])
+    relocs=relocations(relocation_text)
+    relocation_targets=relocation_symbol_targets(relocation_text)
     defined={e["address"]:name for name,e in symbols.items()
              if e["kind"]=="FUNC" and e["size"]>0}
     slots=[]
@@ -228,24 +260,45 @@ def inspect(path:Path)->dict:
         vaddr=vtable["address"]+offset
         value=read_word(data,loads,vaddr)
         dest=defined.get(value) or defined.get(value&~1)
+        target=relocation_targets.get(vaddr)
+        if target and target["relocation_type"]=="R_ARM_ABS32":
+            decoded=arm.offline_tool(
+                ["c++filt"],target["mangled_symbol"]+"\n").strip()
+            # The defined target from this exact ELF is cross-checked by
+            # demangled identity AND the dynamic symbol's own value.
+            own=symbols.get(decoded)
+            defined_target=own is not None and own["kind"]=="FUNC" and (
+                target["symbol_value"]=="0x%08x"%own["address"]
+            )
+        else:
+            decoded=None
+            defined_target=False
         slots.append({
             "vtable_byte_offset":offset,
             "slot_vaddr":"0x%08x"%vaddr,
             "stored_word":"0x%08x"%value,
             "relocation":relocs.get(vaddr,"NONE"),
+            "relocation_symbol":decoded,
+            "relocation_symbol_value":target["symbol_value"] if target else None,
+            "relocation_is_defined_function":defined_target,
             "target_defined_function":dest,
             "target_exact_function_start":dest is not None,
+            "runtime_pointer_value_observed":False,
         })
     methods={}
     for prefix in ("DscJfif::JpegEncode(","DscJfif::JpegDecode(",
                    "DscJfif::RawCompress("):
         fn=select(symbols,prefix,"FUNC")
         found=[slot["vtable_byte_offset"] for slot in slots
-               if int(slot["stored_word"],16)&~1==fn["address"]&~1]
+               if (int(slot["stored_word"],16)&~1)==(fn["address"]&~1) or (
+                   slot["relocation_is_defined_function"] and
+                   slot["relocation_symbol"]==fn["name"]
+               )]
         methods[prefix]={
             "function_address":"0x%08x"%fn["address"],
             "vtable_matching_slot_offsets":found,
-            "vtable_slot_function_proven":bool(found),
+            "vtable_static_relocation_target_matched":bool(found),
+            "on_camera_runtime_method_target_proven":False,
         }
     funcs={}
     for prefix in FUNCTIONS:
