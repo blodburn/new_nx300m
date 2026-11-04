@@ -25,6 +25,7 @@ test: multimodel-test
 	@python3 research/test_nx300m_fw114_native_elf_diff.py
 	@python3 research/test_nx300m_fw114_sif_callgraph.py
 	@python3 research/test_nx300m_fw114_sif_virtual_dispatch.py
+	@python3 research/test_nx300m_fw114_jfif_r6_arg_provenance.py
 	@python3 research/test_nx300m_fw114_function_proofs.py
 	@python3 research/test_nx300m_fw114_capture_jpeg_route.py
 	@python3 research/test_nx300m_fw114_runtime_metadata_gate.py
