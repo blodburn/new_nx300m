@@ -555,6 +555,35 @@ jobs:
               if not any("CMmDeviceDriver::ResizeImage(" in
                       z["target_demangled"] for z in encode["named_call_edges"]):
                   raise SystemExit("REJECT missing native YCC ResizeImage branch "+v)
+              stack=encode["native_arm_jpeg_stack_arg_abi"]
+              args=stack["DscImage_EncodeYCC_stack_args"]
+              if (stack["stack_parameter_count"]!=11 or
+                  not stack["C1_and_geometry_stack_arg_opcode_verified"] or
+                  stack["code_confirmed_immediate_quality"]!=2 or
+                  stack["code_confirmed_last_integer"]!=2000 or
+                  stack["raw_DMA_buffer_copy_safe"] or
+                  stack["camera_firmware_flash_permitted"]):
+                  raise SystemExit("REJECT actual FW114 YCC JPEG stack ABI mismatch")
+              if [(x["SP_byte_offset"],x["native_abi_arg"]) for x in args]!=[
+                  (0,"C1"),(4,"pointer/aux arg5"),
+                  (8,"pointer/aux arg6"),(12,"pointer/aux arg7"),
+                  (16,"Width"),(20,"Height"),(24,"Stride"),
+                  (28,"eImgYCCType"),(32,"eImgYCCPackType"),
+                  (36,"eImgQuality"),(40,"final int")]:
+                  raise SystemExit("REJECT firmware JPEG stack descriptor offsets")
+              resize=y["native_methods"][
+                  "CMmDeviceDriver::ResizeImage(CYcc&, CYcc&)"]
+              if not any(x["target_demangled"].startswith(
+                    "ipcs_one_resize("
+                  ) for x in resize["named_call_edges"]) or not any(
+                    x["target_demangled"].startswith("ipcs_several_resize(")
+                    for x in resize["named_call_edges"]
+                  ):
+                  raise SystemExit("REJECT missing native FW JPEG resize modes")
+              print("PASS_FW_NATIVE_YCC_JPEG_STACK",v,
+                    [(x["SP_byte_offset"],x["native_abi_arg"],
+                      x["stored_from"]) for x in args],
+                    "NO_SAFE_DMA_CLAIM")
               print("FW114_NATIVE_JPEG_INPUT_ABI",v,
                     [(a["argument"],a["destination"],a["source"]) for a in regs],
                     "GETTERS",
