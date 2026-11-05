@@ -36,7 +36,7 @@ class CyccProviderPathTests(unittest.TestCase):
 
     def test_realistic_cycc_destructor_arm_lifecycle_is_only_static(self):
         # BL to same-ELF local method, register BLX, then return.
-        words=(0xe92d4008,0xeb000002,0xe12fff33,0xe8bd8008)
+        words=(0xe92d4008,0xeb000001,0xe12fff33,0xe8bd8008)
         data=struct.pack("<IIII",*words)
         result=probe.critical_arm_body(
             data,[(0x1000,16,0)],0x1000,16,
