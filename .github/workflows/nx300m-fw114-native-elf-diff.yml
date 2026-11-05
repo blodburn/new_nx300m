@@ -27,6 +27,8 @@ on:
       - 'research/test_nx300m_fw114_cycc_provider_probe.py'
       - 'research/nx300m_fw114_pool_slot8_writer_audit.py'
       - 'research/test_nx300m_fw114_pool_slot8_writer_audit.py'
+      - 'research/nx300m_fw114_pool_create_caller_audit.py'
+      - 'research/test_nx300m_fw114_pool_create_caller_audit.py'
       - 'research/test_nx300m_fw114_capture_jpeg_route.py'
       - 'research/test_nx300m_fw114_function_proofs.py'
       - 'research/test_nx300m_fw114_native_elf_diff.py'
@@ -58,6 +60,8 @@ on:
       - 'research/test_nx300m_fw114_cycc_provider_probe.py'
       - 'research/nx300m_fw114_pool_slot8_writer_audit.py'
       - 'research/test_nx300m_fw114_pool_slot8_writer_audit.py'
+      - 'research/nx300m_fw114_pool_create_caller_audit.py'
+      - 'research/test_nx300m_fw114_pool_create_caller_audit.py'
       - 'research/test_nx300m_fw114_capture_jpeg_route.py'
       - 'research/test_nx300m_fw114_function_proofs.py'
       - 'research/test_nx300m_fw114_native_elf_diff.py'
@@ -93,6 +97,7 @@ jobs:
           python3 research/test_nx300m_fw114_photo_buffer_lifetime.py
           python3 research/test_nx300m_fw114_cycc_provider_probe.py
           python3 research/test_nx300m_fw114_pool_slot8_writer_audit.py
+          python3 research/test_nx300m_fw114_pool_create_caller_audit.py
           python3 research/test_nx300m_fw114_binary_delta.py
 
       - name: Install pinned offline UBI reader in ephemeral venv
@@ -703,6 +708,37 @@ jobs:
                         "CALLS",method["named_native_arm_direct_calls"])
           print("PASS real FW114/115 native pool method and candidate +8 "
                 "writer inventory; runtime memory reuse NOT PROVEN")
+          origin=report["fw114_pool_creation_callers"]
+          if (not origin["photo_ELF_byte_equal"] or
+              origin["real_camera_pool_ownership_proven"] or
+              origin["firmware_flash_permitted"]):
+              raise SystemExit("REJECT camera memory pool origin claim")
+          for fw in ("fw114","fw115"):
+              x=origin[fw]
+              if (x["examined_method_count"]<100 or
+                  x["caller_search_is_complete_for_indirect_calls"] or
+                  x["pool_base_address_at_runtime_proven"] or
+                  x["pool_write_or_reuse_after_creation_proven"] or
+                  x["on_camera_capture_timing_proven"] or
+                  x["camera_firmware_install_or_flash_permitted"]):
+                  raise SystemExit("REJECT bounded native pool caller evidence")
+              print("FW114_NATIVE_POOL_CREATE_CALLERS",fw,
+                    "examined",x["examined_method_count"],
+                    "callers",x["pool_callsite_candidates"])
+              pool=report["fw114_pool_slot8_writer_inventory"][fw]
+              layout=pool["constructor_three_pointer_offset_layout"]
+              if (layout["native_address"]!="0x000351b4" or
+                  layout["field_offset_to_base"]!={"0":0,"4":31457280,
+                                                 "8":41943040} or
+                  layout["arm_add30_site"]!="0x000351dc" or
+                  layout["arm_add10_site"]!="0x000351f0" or
+                  layout["field8_write_site"]!="0x000351f8" or
+                  layout["concurrent_or_later_writers_excluded"] or
+                  layout["camera_flash_permitted"]):
+                  raise SystemExit("REJECT FW114 pool slot offset arithmetic")
+              print("PASS_FW_NATIVE_POOL_CONSTRUCTOR_POINTER_LAYOUT",fw,
+                    layout["field_offset_to_base"],
+                    "BASE_RUNTIME_UNKNOWN")
           print('PASS native ELF FW114/115 file-hash and sampled-symbol delta report')
           PY
 
