@@ -38,6 +38,7 @@ import nx300m_fw114_listener_callback_registration as listeners
 import nx300m_fw114_listener_got_consumer_audit as listener_got
 import nx300m_fw114_listener_registration_callers as registration_callers
 import nx300m_fw114_listener_cross_elf_imports as listener_external
+import nx300m_fw114_mm_photo_init_cross_elf as photo_init_callers
 import nx300m_fw114_arm_loader_abi as arm_loader
 import nx300m_fw114_runtime_linkage_audit as runtime_linkage
 
@@ -389,6 +390,8 @@ def analyze(archives: dict[str, Path], private_root: Path,
             route_paths["1.15"][static_route.PHOTO])
         external_listener_references = listener_external.compare_versions(
             extracted_roots["1.14"], extracted_roots["1.15"])
+        photo_initialization_links = photo_init_callers.compare_versions(
+            extracted_roots["1.14"], extracted_roots["1.15"])
         pool_destructor_proof = {
             version: cycc_provider.proof_mode2_pool_and_trivial_cycc_destructor(
                 evidence[version]["cycc_ownership_provider_symbols"],
@@ -415,6 +418,7 @@ def analyze(archives: dict[str, Path], private_root: Path,
             "fw114_pool_listener_got_consumers":listener_got_consumers,
             "fw114_registration_reverse_direct_bl":registration_callsite_witnesses,
             "fw114_listener_external_elf_refs":external_listener_references,
+            "fw114_mm_photo_init_xelf_calls":photo_initialization_links,
             "cycc_pool_destructor_native_proof":pool_destructor_proof,
             "camera_flash_permitted": False,
             "camera_isp_buffer_contract_verified": False,

@@ -36,6 +36,7 @@ test: multimodel-test
 	@python3 research/test_nx300m_fw114_listener_got_consumer_audit.py
 	@python3 research/test_nx300m_fw114_listener_registration_callers.py
 	@python3 research/test_nx300m_fw114_listener_cross_elf_imports.py
+	@python3 research/test_nx300m_fw114_mm_photo_init_cross_elf.py
 	@python3 research/test_nx300m_fw114_function_proofs.py
 	@python3 research/test_nx300m_fw114_capture_jpeg_route.py
 	@python3 research/test_nx300m_fw114_runtime_metadata_gate.py
