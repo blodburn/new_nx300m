@@ -22,7 +22,7 @@ class NativeARMPhotoLifetimeTests(unittest.TestCase):
             self.assertIsNone(life.arm_direct_b(op,0x1000))
 
     def test_native_function_branch_bounds(self):
-        words=(0x1a000000,0xeafffffc,0xeb000003,0xe1a00000)
+        words=(0x1a000000,0xeafffffd,0xeb000003,0xe1a00000)
         b=life.branch_boundaries(words,0x1000)
         self.assertEqual(len(b),2)
         self.assertEqual(b[0]["target"],"0x00001008")
