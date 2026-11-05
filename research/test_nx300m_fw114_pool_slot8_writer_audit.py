@@ -9,7 +9,7 @@ import nx300m_fw114_pool_slot8_writer_audit as pool
 
 class NativePoolWrites(unittest.TestCase):
     def test_arm_store_8_candidate_not_runtime_proof(self):
-        words=(0xe50b1008,0xe5832008,0xe5932008,0xe5832004,0xe1a00000)
+        words=(0xe58b1008,0xe5832008,0xe5932008,0xe5832004,0xe1a00000)
         r=pool.offset8_stores(words,0x1000)
         self.assertEqual(len(r),2)
         self.assertEqual(r[0]["base_register"],"r11")
