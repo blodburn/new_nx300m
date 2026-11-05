@@ -364,6 +364,12 @@ def analyze(archives: dict[str, Path], private_root: Path,
         memory_lifetime = lifetime.compare_versions(
             route_paths["1.14"][static_route.PHOTO],
             route_paths["1.15"][static_route.PHOTO])
+        pool_destructor_proof = {
+            version: cycc_provider.proof_mode2_pool_and_trivial_cycc_destructor(
+                evidence[version]["cycc_ownership_provider_symbols"],
+                memory_lifetime["fw"+version.replace(".","")])
+            for version in ("1.14","1.15")
+        }
         return {
             "scope": "UNOFFICIAL_MIRROR_OFFLINE_HOST_ONLY",
             "source_chain_of_custody_confirmed": False,
@@ -378,6 +384,7 @@ def analyze(archives: dict[str, Path], private_root: Path,
             "hal_table_plus8_initialization_witness":hal_producer,
             "fw114_photo_ycc_copy_boundary":ycc_copy_boundary,
             "fw114_photo_buffer_lifetime_branches":memory_lifetime,
+            "cycc_pool_destructor_native_proof":pool_destructor_proof,
             "camera_flash_permitted": False,
             "camera_isp_buffer_contract_verified": False,
             "camera_recovery_procedure_verified": False,
