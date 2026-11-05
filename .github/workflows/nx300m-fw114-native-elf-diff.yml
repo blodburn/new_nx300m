@@ -33,6 +33,8 @@ on:
       - 'research/test_nx300m_fw114_sysmmap_provider_audit.py'
       - 'research/nx300m_fw114_sysmmap_osif_arg_windows.py'
       - 'research/test_nx300m_fw114_sysmmap_osif_arg_windows.py'
+      - 'research/nx300m_fw114_sysmmap_upstream_size_chain.py'
+      - 'research/test_nx300m_fw114_sysmmap_upstream_size_chain.py'
       - 'research/nx300m_fw114_pool_create_caller_audit.py'
       - 'research/test_nx300m_fw114_pool_create_caller_audit.py'
       - 'research/nx300m_fw114_listener_callback_registration.py'
@@ -82,6 +84,8 @@ on:
       - 'research/test_nx300m_fw114_sysmmap_provider_audit.py'
       - 'research/nx300m_fw114_sysmmap_osif_arg_windows.py'
       - 'research/test_nx300m_fw114_sysmmap_osif_arg_windows.py'
+      - 'research/nx300m_fw114_sysmmap_upstream_size_chain.py'
+      - 'research/test_nx300m_fw114_sysmmap_upstream_size_chain.py'
       - 'research/nx300m_fw114_pool_create_caller_audit.py'
       - 'research/test_nx300m_fw114_pool_create_caller_audit.py'
       - 'research/nx300m_fw114_listener_callback_registration.py'
@@ -132,6 +136,7 @@ jobs:
           python3 research/test_nx300m_fw114_pool_mmap_size_contract.py
           python3 research/test_nx300m_fw114_sysmmap_provider_audit.py
           python3 research/test_nx300m_fw114_sysmmap_osif_arg_windows.py
+          python3 research/test_nx300m_fw114_sysmmap_upstream_size_chain.py
           python3 research/test_nx300m_fw114_pool_create_caller_audit.py
           python3 research/test_nx300m_fw114_listener_callback_registration.py
           python3 research/test_nx300m_fw114_listener_got_consumer_audit.py
@@ -1225,6 +1230,61 @@ jobs:
                             "LIVE_MAPPING_SIZE_UNKNOWN")
           print("PASS FW114/115 ARM OSIF call argument windows only; "
                 "on-camera mmap length and DMA safety NOT PROVEN")
+          up=report["fw114_sysmmap_upstream_size_windows"]
+          if (not up["native_provider_byte_equal"] or
+              not up["all_static_function_bodies_equal"] or
+              up["runtime_on_camera_malloc_size_proven"] or
+              up["firmware_flash_permitted"]):
+              raise SystemExit("REJECT unsafe SYSMMAP upstream size witness")
+          chain={
+              "sysmmap_alloc":{"sysmmap_mgr_alloc"},
+              "sysmmap_cached_alloc":{"sysmmap_mgr_alloc"},
+              "sysmmap_mgr_alloc":{"sysmmap_client_alloc"},
+              "sysmmap_client_alloc":{"sysmmap_segment_alloc"},
+              "sysmmap_segment_alloc":{"sysmmap_osif_alloc"},
+              "sysmmap_free":{"sysmmap_mgr_free"},
+              "sysmmap_mgr_free":{"sysmmap_client_free"},
+              "sysmmap_client_free":{"sysmmap_segment_free"},
+              "sysmmap_segment_free":{"sysmmap_osif_free"},
+          }
+          for fw in ("fw114","fw115"):
+              row=up[fw]
+              if (set(row["methods"])!=set(chain) or
+                  row["listener_descriptor_plus4_to_mmap_r1_complete_proof"] or
+                  row["allocator_returned_byte_count_or_success_verified"] or
+                  row["physical_camera_dma_or_memory_lifetime_proven"] or
+                  row["camera_firmware_flash_permitted"]):
+                  raise SystemExit("REJECT FW static mmap cross-layer overclaim")
+              for name,expected in chain.items():
+                  m=row["methods"][name]
+                  if (set(c["callee"] for c in m["calls"])!=expected or
+                      m["live_camera_syscall_or_callback_invoked"] or
+                      m["exact_live_argument_length_known"]):
+                      raise SystemExit("REJECT SYSMMAP allocator dispatch change")
+                  for c in m["calls"]:
+                      w=c["immediate_r1_writer_witness"]
+                      if (not w["only_static_local_r1_writer_witness"] or
+                          w["unmodeled_aliases_branches_or_other_writers_excluded"] or
+                          w["same_length_as_listener_descriptor_proven"] or
+                          w["live_allocated_bytes_measured"]):
+                          raise SystemExit("REJECT changed native r1 site")
+                      print("FW114_SYSMMAP_IMMEDIATE_R1_WRITER",fw,name,
+                            c["site"],w["writer_site"],w["writer_opcode"],
+                            w["value"],"UNKNOWN_ACTUAL_BYTES")
+                      if (c["r1_is_actual_allocated_byte_count_proven"] or
+                          c["same_value_as_listener_descriptor_plus4_proven"] or
+                          c["runtime_camera_mmap_size_verified"] or
+                          not c["preceding_arm_words"] or
+                          len(c["preceding_arm_words"])>32):
+                          raise SystemExit("REJECT incorrect native r1 writer context")
+                      print("FW114_SYSMMAP_UPSTREAM_R1_WINDOW",fw,
+                            name,"to",c["callee"],"call",c["site"],
+                            "writers",c["candidate_argument_writers"]["r1"],
+                            "first_words",c["first_12_function_arm_words"],
+                            "preceding",c["preceding_arm_words"],
+                            "RUNTIME_REGION_SIZE_UNKNOWN")
+          print("PASS SYSMMAP FW114/115 upstream r1 native ARM windows; "
+                "full size dataflow and real mapped bytes remain unknown")
           print('PASS native ELF FW114/115 file-hash and sampled-symbol delta report')
           PY
 

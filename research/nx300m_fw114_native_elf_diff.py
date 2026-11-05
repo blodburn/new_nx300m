@@ -36,6 +36,7 @@ import nx300m_fw114_pool_slot8_writer_audit as pool_slot8
 import nx300m_fw114_pool_mmap_size_contract as mmap_contract
 import nx300m_fw114_sysmmap_provider_audit as sysmmap_provider
 import nx300m_fw114_sysmmap_osif_arg_windows as sysmmap_args
+import nx300m_fw114_sysmmap_upstream_size_chain as sysmmap_upstream
 import nx300m_fw114_pool_create_caller_audit as pool_callers
 import nx300m_fw114_listener_callback_registration as listeners
 import nx300m_fw114_listener_got_consumer_audit as listener_got
@@ -398,6 +399,8 @@ def analyze(archives: dict[str, Path], private_root: Path,
             extracted_roots["1.14"], extracted_roots["1.15"])
         photo_initialization_links = photo_init_callers.compare_versions(
             extracted_roots["1.14"], extracted_roots["1.15"])
+        sysmmap_upstream_windows = sysmmap_upstream.compare_versions(
+            extracted_roots["1.14"],extracted_roots["1.15"])
         sysmmap_aapcs_windows = sysmmap_args.compare_versions(
             extracted_roots["1.14"],extracted_roots["1.15"])
         sysmmap_native_provider = sysmmap_provider.compare_versions(
@@ -426,6 +429,7 @@ def analyze(archives: dict[str, Path], private_root: Path,
             "fw114_pool_mmap_size_contract":arena_size_contract,
             "fw114_native_sysmmap_provider":sysmmap_native_provider,
             "fw114_sysmmap_aapcs_arg_windows":sysmmap_aapcs_windows,
+            "fw114_sysmmap_upstream_size_windows":sysmmap_upstream_windows,
             "fw114_pool_creation_callers":pool_origins,
             "fw114_pool_listener_relocation_witnesses":listener_relocation_witnesses,
             "fw114_pool_listener_got_consumers":listener_got_consumers,
