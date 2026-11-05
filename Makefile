@@ -33,6 +33,7 @@ test: multimodel-test
 	@python3 research/test_nx300m_fw114_pool_slot8_writer_audit.py
 	@python3 research/test_nx300m_fw114_pool_create_caller_audit.py
 	@python3 research/test_nx300m_fw114_listener_callback_registration.py
+	@python3 research/test_nx300m_fw114_listener_got_consumer_audit.py
 	@python3 research/test_nx300m_fw114_function_proofs.py
 	@python3 research/test_nx300m_fw114_capture_jpeg_route.py
 	@python3 research/test_nx300m_fw114_runtime_metadata_gate.py
