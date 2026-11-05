@@ -33,6 +33,8 @@ on:
       - 'research/test_nx300m_fw114_listener_callback_registration.py'
       - 'research/nx300m_fw114_listener_got_consumer_audit.py'
       - 'research/test_nx300m_fw114_listener_got_consumer_audit.py'
+      - 'research/nx300m_fw114_listener_registration_callers.py'
+      - 'research/test_nx300m_fw114_listener_registration_callers.py'
       - 'research/test_nx300m_fw114_capture_jpeg_route.py'
       - 'research/test_nx300m_fw114_function_proofs.py'
       - 'research/test_nx300m_fw114_native_elf_diff.py'
@@ -70,6 +72,8 @@ on:
       - 'research/test_nx300m_fw114_listener_callback_registration.py'
       - 'research/nx300m_fw114_listener_got_consumer_audit.py'
       - 'research/test_nx300m_fw114_listener_got_consumer_audit.py'
+      - 'research/nx300m_fw114_listener_registration_callers.py'
+      - 'research/test_nx300m_fw114_listener_registration_callers.py'
       - 'research/test_nx300m_fw114_capture_jpeg_route.py'
       - 'research/test_nx300m_fw114_function_proofs.py'
       - 'research/test_nx300m_fw114_native_elf_diff.py'
@@ -108,6 +112,7 @@ jobs:
           python3 research/test_nx300m_fw114_pool_create_caller_audit.py
           python3 research/test_nx300m_fw114_listener_callback_registration.py
           python3 research/test_nx300m_fw114_listener_got_consumer_audit.py
+          python3 research/test_nx300m_fw114_listener_registration_callers.py
           python3 research/test_nx300m_fw114_binary_delta.py
 
       - name: Install pinned offline UBI reader in ephemeral venv
@@ -869,6 +874,39 @@ jobs:
                     entry["possible_listener_GOT_loads"])
           print("PASS FW114/115 candidate ARM GOT consumers; "
                 "registration, execution order and DMA lifetime UNPROVEN")
+          reverse=report["fw114_registration_reverse_direct_bl"]
+          if (not reverse["photo_ELF_sha256_equal"] or
+              reverse["registered_callback_owner_on_camera_proven"] or
+              reverse["firmware_flash_permitted"]):
+              raise SystemExit("REJECT native caller version mismatch")
+          for fw in ("fw114","fw115"):
+              x=reverse[fw]
+              if (x["registration_function_address"]!="0x000350d8" or
+                  x["registration_function_bytes"]!=220 or
+                  x["registration_target"]!="RegisterMemoryMapListner()" or
+                  x["examined_arm_function_count"]<100 or
+                  x["direct_bl_caller_count"]!=len(x["direct_bl_callers"]) or
+                  x["indirect_thumb_external_callers_fully_scanned"] or
+                  x["per_shutter_callback_registration_proven"] or
+                  x["live_callback_frequency_or_order_verified"] or
+                  x["image_dma_ownership_or_cache_safety_verified"] or
+                  x["firmware_flash_permitted"]):
+                  raise SystemExit("REJECT native registration caller overclaim")
+              for caller in x["direct_bl_callers"]:
+                  if (caller["callee"]!="RegisterMemoryMapListner()" or
+                      caller["callee_address"]!="0x000350d8" or
+                      caller["real_camera_invocation_proven"] or
+                      caller["callback_registration_success_proven"] or
+                      caller["runtime_callback_registration_invoked"] or
+                      caller["camera_capture_event_or_thread_proven"]):
+                      raise SystemExit("REJECT invalid native registration call")
+              print("FW114_LISTENER_REGISTER_DIRECT_CALLERS",fw,
+                    "scanned",x["examined_arm_function_count"],
+                    "direct_count",x["direct_bl_caller_count"],
+                    "sites",x["direct_bl_callers"],
+                    "memorymap_symbols",x["memory_map_named_symbols"])
+          print("PASS FW114/115 exact ARM registration reverse BL scan; "
+                "no real-camera callback timing or DMA ownership proof")
           print('PASS native ELF FW114/115 file-hash and sampled-symbol delta report')
           PY
 
