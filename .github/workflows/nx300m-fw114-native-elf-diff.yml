@@ -23,6 +23,8 @@ on:
       - 'research/test_nx300m_fw114_photo_ycc_copy_boundary.py'
       - 'research/nx300m_fw114_photo_buffer_lifetime.py'
       - 'research/test_nx300m_fw114_photo_buffer_lifetime.py'
+      - 'research/nx300m_fw114_cycc_provider_probe.py'
+      - 'research/test_nx300m_fw114_cycc_provider_probe.py'
       - 'research/test_nx300m_fw114_capture_jpeg_route.py'
       - 'research/test_nx300m_fw114_function_proofs.py'
       - 'research/test_nx300m_fw114_native_elf_diff.py'
@@ -50,6 +52,8 @@ on:
       - 'research/test_nx300m_fw114_photo_ycc_copy_boundary.py'
       - 'research/nx300m_fw114_photo_buffer_lifetime.py'
       - 'research/test_nx300m_fw114_photo_buffer_lifetime.py'
+      - 'research/nx300m_fw114_cycc_provider_probe.py'
+      - 'research/test_nx300m_fw114_cycc_provider_probe.py'
       - 'research/test_nx300m_fw114_capture_jpeg_route.py'
       - 'research/test_nx300m_fw114_function_proofs.py'
       - 'research/test_nx300m_fw114_native_elf_diff.py'
@@ -83,6 +87,7 @@ jobs:
           python3 research/test_nx300m_fw114_hal_table_plus8_audit.py
           python3 research/test_nx300m_fw114_photo_ycc_copy_boundary.py
           python3 research/test_nx300m_fw114_photo_buffer_lifetime.py
+          python3 research/test_nx300m_fw114_cycc_provider_probe.py
           python3 research/test_nx300m_fw114_binary_delta.py
 
       - name: Install pinned offline UBI reader in ephemeral venv
@@ -637,6 +642,21 @@ jobs:
                         window["arm_words"])
           print("PASS FW1.14/1.15 photo conditional pool/resize/destructor "
                 "static branch evidence; no camera DMA lifetime proof")
+          for v in ("fw114","fw115"):
+              providers=report[v]["cycc_ownership_provider_symbols"]
+              if (providers["live_symbol_resolution_proven"] or
+                  providers["destructor_frees_CYcc_pixel_storage_proven"] or
+                  providers["destructor_does_not_free_CYcc_pixel_storage_proven"] or
+                  providers["real_camera_firmware_patch_permitted"]):
+                  raise SystemExit("REJECT false native buffer lifetime proof")
+              for name,lib in providers["provider_elfs"].items():
+                  if lib["present"]:
+                      print("FW114_CYCC_PROVIDER_METHODS",v,name,
+                            lib["target_symbols"])
+                  else:
+                      print("FW114_CYCC_PROVIDER_ABSENT",v,name)
+          print("PASS FW1.14/1.15 CYcc memory pool/destructor provider "
+                "metadata scan; no actual on-device DMA lifetime proof")
           print('PASS native ELF FW114/115 file-hash and sampled-symbol delta report')
           PY
 
