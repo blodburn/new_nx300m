@@ -730,9 +730,9 @@ jobs:
                   or mm["camera_firmware_flash_permitted"]):
                   raise SystemExit("REJECT unsafe FW114 mmap pool base proof")
               entry=mm["listeners"]
-              if set(entry)!=set(("AllocListener","FreeListener")) or
+              if (set(entry)!=set(("AllocListener","FreeListener")) or
                   entry["AllocListener"]["function_address"]!="0x00034d9c" or
-                  entry["FreeListener"]["function_address"]!="0x00034fc8":
+                  entry["FreeListener"]["function_address"]!="0x00034fc8"):
                   raise SystemExit("REJECT pool listener native function identity")
               expected=(
                   ("AllocListener","0x00034e44","sysmmap_cached_alloc"),
