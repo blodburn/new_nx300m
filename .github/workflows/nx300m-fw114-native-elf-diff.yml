@@ -29,6 +29,8 @@ on:
       - 'research/test_nx300m_fw114_pool_slot8_writer_audit.py'
       - 'research/nx300m_fw114_pool_mmap_size_contract.py'
       - 'research/test_nx300m_fw114_pool_mmap_size_contract.py'
+      - 'research/nx300m_fw114_sysmmap_provider_audit.py'
+      - 'research/test_nx300m_fw114_sysmmap_provider_audit.py'
       - 'research/nx300m_fw114_pool_create_caller_audit.py'
       - 'research/test_nx300m_fw114_pool_create_caller_audit.py'
       - 'research/nx300m_fw114_listener_callback_registration.py'
@@ -74,6 +76,8 @@ on:
       - 'research/test_nx300m_fw114_pool_slot8_writer_audit.py'
       - 'research/nx300m_fw114_pool_mmap_size_contract.py'
       - 'research/test_nx300m_fw114_pool_mmap_size_contract.py'
+      - 'research/nx300m_fw114_sysmmap_provider_audit.py'
+      - 'research/test_nx300m_fw114_sysmmap_provider_audit.py'
       - 'research/nx300m_fw114_pool_create_caller_audit.py'
       - 'research/test_nx300m_fw114_pool_create_caller_audit.py'
       - 'research/nx300m_fw114_listener_callback_registration.py'
@@ -122,6 +126,7 @@ jobs:
           python3 research/test_nx300m_fw114_cycc_provider_probe.py
           python3 research/test_nx300m_fw114_pool_slot8_writer_audit.py
           python3 research/test_nx300m_fw114_pool_mmap_size_contract.py
+          python3 research/test_nx300m_fw114_sysmmap_provider_audit.py
           python3 research/test_nx300m_fw114_pool_create_caller_audit.py
           python3 research/test_nx300m_fw114_listener_callback_registration.py
           python3 research/test_nx300m_fw114_listener_got_consumer_audit.py
@@ -1096,6 +1101,31 @@ jobs:
                     f["release_branch_words"])
           print("PASS 40MiB pool-pointer lower bound from native ARM; "
                 "actual camera mmap size / DMA safety UNVERIFIED")
+          provider=report["fw114_native_sysmmap_provider"]
+          if (provider["physical_camera_kernel_mapping_proven"] or
+              provider["firmware_flash_permitted"] or
+              not provider["same_exported_function_names"]):
+              raise SystemExit("REJECT SYSMMAP provider link mismatch")
+          for fw in ("fw114","fw115"):
+              p=provider[fw]
+              if (p["provider"]!="libsys-mmap-manager.so" or
+                  not p["photo_needed_provider"] or
+                  not p["provider_elf_eabi5"] or
+                  p["all_kernel_ioctl_and_dynamic_callbacks_resolved"] or
+                  p["camera_runtime_allocator_calls_observed"] or
+                  p["actual_allocated_bytes_measured"] or
+                  p["mmap_cached_uncached_coherency_proven"] or
+                  p["camera_firmware_flash_permitted"]):
+                  raise SystemExit("REJECT missing or unsafe native mmap provider")
+              print("FW114_REAL_SYSMMAP_PROVIDER",fw,
+                    "SHA256",p["provider_sha256"],
+                    "EXPORTED",p["mmap_exported_functions"],
+                    "UNDEFINED",p["mmap_undefined_symbols"],
+                    "PROVIDER_DEPENDENCIES",p["provider_needed_sonames"],
+                    "STATIC_ARM_CALLGRAPH",
+                    p["native_defined_function_arm_callgraph"])
+          print("PASS native FW1.14/1.15 real mmap provider ABI inventory; "
+                "actual camera mapping size and DMA safety UNPROVEN")
           print('PASS native ELF FW114/115 file-hash and sampled-symbol delta report')
           PY
 
