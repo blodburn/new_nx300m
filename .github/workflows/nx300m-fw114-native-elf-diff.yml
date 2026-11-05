@@ -897,9 +897,16 @@ jobs:
                   x["image_dma_ownership_or_cache_safety_verified"] or
                   x["firmware_flash_permitted"]):
                   raise SystemExit("REJECT native registration caller overclaim")
+              if (x["registration_PLT_relocation_slot"]!="0x00067648" or
+                  x["registration_PLT_native_symbol"]!=
+                      "_Z24RegisterMemoryMapListnerv"):
+                  raise SystemExit("REJECT missing native callback PLT identity")
               for caller in x["direct_bl_callers"]:
                   if (caller["callee"]!="RegisterMemoryMapListner()" or
                       caller["callee_address"]!="0x000350d8" or
+                      caller["static_edge_class"] not in (
+                          "ARM_BL_TO_LOCAL","ARM_BL_TO_PLT_IMPORT") or
+                      caller["runtime_dynamic_linker_binding_proven"] or
                       caller["real_camera_invocation_proven"] or
                       caller["callback_registration_success_proven"] or
                       caller["runtime_callback_registration_invoked"] or
