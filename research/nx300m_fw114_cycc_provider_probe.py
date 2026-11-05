@@ -12,6 +12,10 @@ import stat
 
 import nx300m_fw114_sif_virtual_dispatch as symbols
 import nx300m_fw114_function_proofs as elf
+import nx300m_fw114_photo_buffer_lifetime as lifetime
+import nx300m_native_jpeg_abi_boundary_audit as jpeg
+import nx300m_fw114_jfif_r6_arg_provenance as mem
+import struct
 
 MAX_FILES=60000
 MAX_ELF=16*1024*1024
@@ -59,6 +63,67 @@ def safe_sources(root:Path)->dict[str,Path]:
     return output
 
 
+CODE_TARGETS=(
+    "CYcc::~CYcc()",
+    "CYcc::CYcc(sImgSize, unsigned long)",
+    "CMemoryPool::GetAddr(",
+    "CMemoryPool::GetInstance()",
+    "CYcc::GetType()",
+)
+MAX_ARM_WORDS=170
+
+
+def critical_arm_body(data:bytes,loads:list[tuple[int,int,int]],
+                      address:int,size:int,
+                      native_function_names:dict[int,str],
+                      relocs:dict[int,dict])->dict:
+    """Disassemble bounded source ELF ARM words without executing firmware."""
+    if address&3 or size&3 or not 4<=size<=MAX_ARM_WORDS*4:
+        raise ValueError("Unexpected bounded CYcc provider ARM body")
+    pos=elf.file_range_for_vaddr(loads,address,size)
+    words=struct.unpack_from("<"+"I"*(size//4),data,pos)
+    direct_calls=[]
+    indirect=[]
+    for i,op in enumerate(words):
+        pc=address+4*i
+        target=si.arm.decode_arm_bl(op,pc)
+        if target is not None:
+            name=native_function_names.get(target)
+            imported=None
+            if name is None:
+                try:
+                    got=jpeg.plt_got(data,loads,target)
+                    relocation=relocs.get(got)
+                    if relocation and relocation["relocation_type"]=="R_ARM_JUMP_SLOT":
+                        imported=relocation["mangled_symbol"]
+                except ValueError:
+                    pass
+            direct_calls.append({
+                "pc":"0x%08x"%pc,
+                "branch_target":"0x%08x"%target,
+                "local_native_function":name,
+                "same_elf_import_mangled":imported,
+            })
+        elif mem.sif.decode_indirect(op):
+            kind,r=mem.sif.decode_indirect(op)
+            indirect.append({"pc":"0x%08x"%pc,"kind":kind,"register":r})
+    return {
+        "arm_word_count":len(words),
+        "unconditional_arm_B_edges":[
+            branch for branch in lifetime.branch_boundaries(words,address)
+            if branch["condition"]==14
+        ],
+        "direct_ARM_BL_edges":direct_calls,
+        "register_indirect_branches":indirect,
+        "arm_instruction_words":[
+            {"pc":"0x%08x"%(address+4*i),"opcode":"0x%08x"%op}
+            for i,op in enumerate(words)
+        ],
+        "native_actual_pixel_release_verified":False,
+        "no_hidden_or_indirect_release_proven":False,
+    }
+
+
 def inspect(root:Path)->dict:
     providers=safe_sources(root)
     report={}
@@ -70,6 +135,13 @@ def inspect(root:Path)->dict:
         loads=elf.program_headers(path)
         idx=symbols.symbol_index(symbols.arm.offline_tool(
             ["readelf","-Ws",str(path)]))
+        image=path.read_bytes()
+        relocation_text=symbols.arm.offline_tool(["readelf","-Wr",str(path)])
+        relocs=symbols.relocation_symbol_targets(relocation_text)
+        defined={
+            item["address"]:key for key,item in idx.items()
+            if item["kind"]=="FUNC" and item["size"]>0
+        }
         matches=[]
         for title,entry in sorted(idx.items()):
             if entry["kind"]!="FUNC" or not any(
@@ -85,12 +157,18 @@ def inspect(root:Path)->dict:
                 body=stream.read(size)
             if len(body)!=size:
                 raise ValueError("Provider ARM method truncated")
+            extra={}
+            if any(title.startswith(prefix) for prefix in CODE_TARGETS):
+                extra["offline_native_ARM_body"]=critical_arm_body(
+                    image,loads,address,size,defined,relocs
+                )
             matches.append({
                 "name":title,
                 "address":"0x%08x"%address,
                 "function_bytes":size,
                 "sha256":hashlib.sha256(body).hexdigest(),
                 "actual_function_run_on_camera":False,
+                **extra,
             })
         if len(matches)>96:
             raise ValueError("Too many native CYcc provider matches")
