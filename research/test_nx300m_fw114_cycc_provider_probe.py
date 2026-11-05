@@ -5,6 +5,7 @@ from __future__ import annotations
 import tempfile
 from pathlib import Path
 import unittest
+import struct
 
 import sys
 sys.path.insert(0,str(Path(__file__).resolve().parent))
@@ -32,6 +33,25 @@ class CyccProviderPathTests(unittest.TestCase):
             (root/"libmm-type.so").symlink_to(out)
             with self.assertRaisesRegex(ValueError,"escapes"):
                 probe.safe_sources(root)
+
+    def test_realistic_cycc_destructor_arm_lifecycle_is_only_static(self):
+        # BL to same-ELF local method, register BLX, then return.
+        words=(0xe92d4008,0xeb000002,0xe12fff33,0xe8bd8008)
+        data=struct.pack("<IIII",*words)
+        result=probe.critical_arm_body(
+            data,[(0x1000,16,0)],0x1000,16,
+            {0x1010:"CYcc::Cleanup()"},{}
+        )
+        self.assertEqual(result["arm_word_count"],4)
+        self.assertEqual(
+            result["direct_ARM_BL_edges"][0]["local_native_function"],
+            "CYcc::Cleanup()"
+        )
+        self.assertEqual(
+            result["register_indirect_branches"][0]["register"],3
+        )
+        self.assertFalse(result["native_actual_pixel_release_verified"])
+        self.assertFalse(result["no_hidden_or_indirect_release_proven"])
 
     def test_alias_conflict_is_not_silently_selected(self):
         with tempfile.TemporaryDirectory() as t:
