@@ -33,6 +33,7 @@ import nx300m_fw114_photo_ycc_copy_boundary as photo_buffer
 import nx300m_fw114_photo_buffer_lifetime as lifetime
 import nx300m_fw114_cycc_provider_probe as cycc_provider
 import nx300m_fw114_pool_slot8_writer_audit as pool_slot8
+import nx300m_fw114_pool_create_caller_audit as pool_callers
 import nx300m_fw114_arm_loader_abi as arm_loader
 import nx300m_fw114_runtime_linkage_audit as runtime_linkage
 
@@ -368,6 +369,9 @@ def analyze(archives: dict[str, Path], private_root: Path,
         pool_writers = pool_slot8.compare_versions(
             route_paths["1.14"][static_route.PHOTO],
             route_paths["1.15"][static_route.PHOTO])
+        pool_origins = pool_callers.compare_versions(
+            route_paths["1.14"][static_route.PHOTO],
+            route_paths["1.15"][static_route.PHOTO])
         pool_destructor_proof = {
             version: cycc_provider.proof_mode2_pool_and_trivial_cycc_destructor(
                 evidence[version]["cycc_ownership_provider_symbols"],
@@ -389,6 +393,7 @@ def analyze(archives: dict[str, Path], private_root: Path,
             "fw114_photo_ycc_copy_boundary":ycc_copy_boundary,
             "fw114_photo_buffer_lifetime_branches":memory_lifetime,
             "fw114_pool_slot8_writer_inventory":pool_writers,
+            "fw114_pool_creation_callers":pool_origins,
             "cycc_pool_destructor_native_proof":pool_destructor_proof,
             "camera_flash_permitted": False,
             "camera_isp_buffer_contract_verified": False,
