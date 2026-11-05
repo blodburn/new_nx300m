@@ -29,6 +29,8 @@ on:
       - 'research/test_nx300m_fw114_pool_slot8_writer_audit.py'
       - 'research/nx300m_fw114_pool_create_caller_audit.py'
       - 'research/test_nx300m_fw114_pool_create_caller_audit.py'
+      - 'research/nx300m_fw114_listener_callback_registration.py'
+      - 'research/test_nx300m_fw114_listener_callback_registration.py'
       - 'research/test_nx300m_fw114_capture_jpeg_route.py'
       - 'research/test_nx300m_fw114_function_proofs.py'
       - 'research/test_nx300m_fw114_native_elf_diff.py'
@@ -62,6 +64,8 @@ on:
       - 'research/test_nx300m_fw114_pool_slot8_writer_audit.py'
       - 'research/nx300m_fw114_pool_create_caller_audit.py'
       - 'research/test_nx300m_fw114_pool_create_caller_audit.py'
+      - 'research/nx300m_fw114_listener_callback_registration.py'
+      - 'research/test_nx300m_fw114_listener_callback_registration.py'
       - 'research/test_nx300m_fw114_capture_jpeg_route.py'
       - 'research/test_nx300m_fw114_function_proofs.py'
       - 'research/test_nx300m_fw114_native_elf_diff.py'
@@ -98,6 +102,7 @@ jobs:
           python3 research/test_nx300m_fw114_cycc_provider_probe.py
           python3 research/test_nx300m_fw114_pool_slot8_writer_audit.py
           python3 research/test_nx300m_fw114_pool_create_caller_audit.py
+          python3 research/test_nx300m_fw114_listener_callback_registration.py
           python3 research/test_nx300m_fw114_binary_delta.py
 
       - name: Install pinned offline UBI reader in ephemeral venv
@@ -769,6 +774,40 @@ jobs:
               print("PASS_FW_NATIVE_POOL_CONSTRUCTOR_POINTER_LAYOUT",fw,
                     layout["field_offset_to_base"],
                     "BASE_RUNTIME_UNKNOWN")
+          witness=report["fw114_pool_listener_relocation_witnesses"]
+          if (not witness["libmm_photo_elf_byte_equal"] or
+              witness["on_camera_callback_execution_proven"] or
+              witness["firmware_install_permitted"]):
+              raise SystemExit("REJECT callback relocation/source mismatch")
+          expected={"AllocListener":"0x00034d9c",
+                    "FreeListener":"0x00034fc8"}
+          for fw in ("fw114","fw115"):
+              w=witness[fw]
+              if (w["actual_listener_runtime_frequency_proven"] or
+                  w["shared_pool_DMA_lifetime_verified"] or
+                  w["camera_firmware_patch_permitted"] or
+                  w["all_possible_registration_operators_scanned"]):
+                  raise SystemExit("REJECT callback pointer runtime claims")
+              refs=w["listener_pointer_evidence"]
+              if set(refs)!=set(expected):
+                  raise SystemExit("REJECT listener symbol inventory")
+              for name,address in expected.items():
+                  item=refs[name]
+                  if (item["native_function_address"]!=address or
+                      item["listener_runtime_registering_site_proven"]):
+                      raise SystemExit("REJECT listener native symbol address")
+                  for p in item["R_ARM_RELATIVE_word_address_candidates"]:
+                      if (not p["R_ARM_RELATIVE_confirmed"] or
+                          p["raw_addend"]!=address or
+                          p["listener_registering_function_proven"] or
+                          p["callback_invocation_on_camera_proven"]):
+                          raise SystemExit("REJECT unsupported listener witness")
+                  print("FW114_LISTENER_RELATIVE_POINTERS",fw,name,
+                        item["R_ARM_RELATIVE_word_address_candidates"],
+                        "EXPLICIT_DYNSYM",
+                        item["explicit_dynamic_symbol_relocations"])
+          print("PASS FW114/115 ARM relocation-backed listener pointer scan; "
+                "runtime callback registration and frequency UNPROVEN")
           print('PASS native ELF FW114/115 file-hash and sampled-symbol delta report')
           PY
 
