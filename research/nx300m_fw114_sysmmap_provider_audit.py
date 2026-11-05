@@ -28,6 +28,9 @@ TARGETS = (
     "sysmmap_cached_alloc",
     "sysmmap_free",
     "sysmmap_client_callback_register",
+    "sysmmap_mgr_alloc",
+    "sysmmap_mgr_free",
+    "sysmmap_mgr_register_callback",
 )
 MAX_PATHS = 60000
 MAX_BYTES = 32 * 1024 * 1024
