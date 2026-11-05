@@ -16,6 +16,16 @@ class PoolCallerWindows(unittest.TestCase):
         self.assertFalse(value["input_base_virtual_address_proven"])
         self.assertFalse(value["memory_pool_alloc_size_proven"])
 
+    def test_lifecycle_only_filters_hotpath_calls(self):
+        self.assertTrue(a.is_pool_lifecycle_call(
+            "_ZN11CMemoryPool14CreateInstanceEj"))
+        self.assertTrue(a.is_pool_lifecycle_call(
+            "CMemoryPool::Destory()"))
+        self.assertFalse(a.is_pool_lifecycle_call(
+            "CMemoryPool::GetInstance()"))
+        self.assertFalse(a.is_pool_lifecycle_call(
+            "_ZN11CMemoryPool7GetAddrE8eMemMode"))
+
     def test_outside_and_unaligned_reject(self):
         words=(0xe1a00000,0xe1a01000)
         for site in (0xffc,0x1001,0x1008):
