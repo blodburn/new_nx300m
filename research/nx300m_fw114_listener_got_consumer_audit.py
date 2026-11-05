@@ -208,6 +208,60 @@ def bounded_arm_window(words: tuple[int, ...], start: int, site: int,
             for j in range(max(0, i-before), min(len(words), i+after+1))]
 
 
+
+def prove_native_register_listener_args(
+    words: tuple[int, ...], start: int, matched: list[dict],
+    direct_calls: list[dict],
+) -> dict:
+    """Assert exact real ARM static r1/r2 pointer transfer and imported BL.
+
+    Passing this proof does NOT establish that the camera invokes the
+    function, that sysmmap registration succeeds, or that callbacks run.
+    """
+    if start != 0x000350d8 or len(words) != 55:
+        raise ValueError("Unsupported RegisterMemoryMapListner FW native body")
+    expected = {
+        0x350f4: 0xe1a00003,  # r0 is another source; live handle unknown
+        0x350f8: 0xe59f309c,  # offset literal for AllocListener GOT
+        0x350fc: 0xe7943003,  # r3 = GOT[AllocListener]
+        0x35100: 0xe1a01003,  # r1 = r3
+        0x35104: 0xe59f3094,  # offset literal for FreeListener GOT
+        0x35108: 0xe7943003,  # r3 = GOT[FreeListener]
+        0x3510c: 0xe1a02003,  # r2 = r3
+        0x35110: 0xebffc896,  # BL sysmmap_client_callback_register
+    }
+    for pc, opcode in expected.items():
+        if words[(pc - start) // 4] != opcode:
+            raise ValueError(f"Changed native callback ARM argument at {pc:#x}")
+    sites = {x["target_listener"]: (x["load_site"],
+                                    x["GLOB_DAT_slot"]) for x in matched}
+    if sites != {
+        "AllocListener": ("0x000350fc", "0x0006868c"),
+        "FreeListener": ("0x00035108", "0x00068684"),
+    }:
+        raise ValueError("Wrong native pool listener GOT argument provenance")
+    if not any(
+        x["callsite"] == "0x00035110" and
+        x["target_kind"] == "import" and
+        x["target_symbol"] == "sysmmap_client_callback_register"
+        for x in direct_calls
+    ):
+        raise ValueError("Native memory-map callback registration BL missing")
+    return {
+        "native_registration_API": "sysmmap_client_callback_register",
+        "ARM_BL_site": "0x00035110",
+        "static_registration_arguments": {
+            "r1": "AllocListener",
+            "r2": "FreeListener",
+        },
+        "r0_live_client_handle_verified": False,
+        "native_static_BL_and_r1_r2_pointer_transfer_proven": True,
+        "real_camera_registration_executed_or_succeeded": False,
+        "live_callback_timing_or_DMA_safety_verified": False,
+        "camera_firmware_flash_permitted": False,
+    }
+
+
 def inspect(path: Path) -> dict:
     if path.is_symlink() or not path.is_file() or not (
         1024 <= path.stat().st_size <= MAX_FILE
@@ -274,6 +328,10 @@ def inspect(path: Path) -> dict:
                          words, address, int(x["load_site"], 16))}
                     for x in matched
                 ],
+                "ARM_registration_argument_proof":
+                    prove_native_register_listener_args(
+                        words, address, matched,
+                        graph["identified_callsite_evidence"]),
                 "callback_registration_call_verified": False,
                 "camera_thread_or_callback_execution_verified": False,
             }
