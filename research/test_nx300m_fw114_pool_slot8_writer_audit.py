@@ -18,6 +18,35 @@ class NativePoolWrites(unittest.TestCase):
         self.assertFalse(r[1]["is_confirmed_pool_this_plus8_write"])
         self.assertFalse(r[1]["is_confirmed_live_pool_reuse"])
 
+    def test_exact_30_10_mib_ctor_offsets_and_corruption(self):
+        start=0x351b4
+        words=[0xe1a00000]*23
+        proof_words={
+            0x351c8:0xe51b3008,0x351cc:0xe51b200c,
+            0x351d0:0xe5832000,0x351d4:0xe51b3008,
+            0x351d8:0xe5933000,0x351dc:0xe283261e,
+            0x351e0:0xe51b3008,0x351e4:0xe5832004,
+            0x351e8:0xe51b3008,0x351ec:0xe5933004,
+            0x351f0:0xe283260a,0x351f4:0xe51b3008,
+            0x351f8:0xe5832008,
+        }
+        for pc,op in proof_words.items():
+            words[(pc-start)//4]=op
+        p=pool.prove_ctor_immutable_slot_base(tuple(words),start)
+        self.assertEqual(p["field_offset_to_base"],
+                         {"0":0,"4":30*1024*1024,"8":40*1024*1024})
+        self.assertFalse(p["physical_pool_size_or_allocation_bounds_proven"])
+        self.assertFalse(p["concurrent_or_later_writers_excluded"])
+        self.assertIsNone(pool.decode_arm_add_immediate(0xe1a00000))
+        changed=words.copy()
+        changed[(0x351f0-start)//4]=0xe283260b
+        with self.assertRaisesRegex(ValueError,"30MiB"):
+            pool.prove_ctor_immutable_slot_base(tuple(changed),start)
+        changed=words.copy()
+        changed[(0x351f8-start)//4]=0xe5832004
+        with self.assertRaisesRegex(ValueError,"constructor ARM changed"):
+            pool.prove_ctor_immutable_slot_base(tuple(changed),start)
+
     def test_fail_closed_on_invalid_or_unbounded_arm(self):
         with self.assertRaises(ValueError):
             pool.offset8_stores((),0x1000)
