@@ -33,6 +33,7 @@ import nx300m_fw114_photo_ycc_copy_boundary as photo_buffer
 import nx300m_fw114_photo_buffer_lifetime as lifetime
 import nx300m_fw114_cycc_provider_probe as cycc_provider
 import nx300m_fw114_pool_slot8_writer_audit as pool_slot8
+import nx300m_fw114_pool_mmap_size_contract as mmap_contract
 import nx300m_fw114_pool_create_caller_audit as pool_callers
 import nx300m_fw114_listener_callback_registration as listeners
 import nx300m_fw114_listener_got_consumer_audit as listener_got
@@ -376,6 +377,9 @@ def analyze(archives: dict[str, Path], private_root: Path,
         pool_writers = pool_slot8.compare_versions(
             route_paths["1.14"][static_route.PHOTO],
             route_paths["1.15"][static_route.PHOTO])
+        arena_size_contract = mmap_contract.compare_versions(
+            route_paths["1.14"][static_route.PHOTO],
+            route_paths["1.15"][static_route.PHOTO])
         pool_origins = pool_callers.compare_versions(
             route_paths["1.14"][static_route.PHOTO],
             route_paths["1.15"][static_route.PHOTO])
@@ -413,6 +417,7 @@ def analyze(archives: dict[str, Path], private_root: Path,
             "fw114_photo_ycc_copy_boundary":ycc_copy_boundary,
             "fw114_photo_buffer_lifetime_branches":memory_lifetime,
             "fw114_pool_slot8_writer_inventory":pool_writers,
+            "fw114_pool_mmap_size_contract":arena_size_contract,
             "fw114_pool_creation_callers":pool_origins,
             "fw114_pool_listener_relocation_witnesses":listener_relocation_witnesses,
             "fw114_pool_listener_got_consumers":listener_got_consumers,

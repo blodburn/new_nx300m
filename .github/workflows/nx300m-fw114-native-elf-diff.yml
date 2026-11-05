@@ -27,6 +27,8 @@ on:
       - 'research/test_nx300m_fw114_cycc_provider_probe.py'
       - 'research/nx300m_fw114_pool_slot8_writer_audit.py'
       - 'research/test_nx300m_fw114_pool_slot8_writer_audit.py'
+      - 'research/nx300m_fw114_pool_mmap_size_contract.py'
+      - 'research/test_nx300m_fw114_pool_mmap_size_contract.py'
       - 'research/nx300m_fw114_pool_create_caller_audit.py'
       - 'research/test_nx300m_fw114_pool_create_caller_audit.py'
       - 'research/nx300m_fw114_listener_callback_registration.py'
@@ -70,6 +72,8 @@ on:
       - 'research/test_nx300m_fw114_cycc_provider_probe.py'
       - 'research/nx300m_fw114_pool_slot8_writer_audit.py'
       - 'research/test_nx300m_fw114_pool_slot8_writer_audit.py'
+      - 'research/nx300m_fw114_pool_mmap_size_contract.py'
+      - 'research/test_nx300m_fw114_pool_mmap_size_contract.py'
       - 'research/nx300m_fw114_pool_create_caller_audit.py'
       - 'research/test_nx300m_fw114_pool_create_caller_audit.py'
       - 'research/nx300m_fw114_listener_callback_registration.py'
@@ -117,6 +121,7 @@ jobs:
           python3 research/test_nx300m_fw114_photo_buffer_lifetime.py
           python3 research/test_nx300m_fw114_cycc_provider_probe.py
           python3 research/test_nx300m_fw114_pool_slot8_writer_audit.py
+          python3 research/test_nx300m_fw114_pool_mmap_size_contract.py
           python3 research/test_nx300m_fw114_pool_create_caller_audit.py
           python3 research/test_nx300m_fw114_listener_callback_registration.py
           python3 research/test_nx300m_fw114_listener_got_consumer_audit.py
@@ -1042,6 +1047,55 @@ jobs:
                     "related",v["mm_photo_init_related_modules"])
           print("PASS FW114/115 mm_photo_init cross-ELF ARM BL/PLT scan; "
                 "camera init timing and image DMA ownership NOT PROVEN")
+          contract=report["fw114_pool_mmap_size_contract"]
+          if (not contract["libmm_photo_elf_identical"] or
+              contract["descriptor_size_observed_on_camera"] or
+              contract["dma_coherency_proven"] or
+              contract["firmware_flash_permitted"]):
+              raise SystemExit("REJECT mmap descriptor size static proof")
+          for fw in ("fw114","fw115"):
+              e=contract[fw]
+              if (e["static_contract"]["minimum_region_bytes"]!=41943040 or
+                  e["static_contract"]["pool_slot4_offset_bytes"]!=31457280 or
+                  e["static_contract"]["pool_slot8_offset_bytes"]!=41943040 or
+                  e["static_contract"]["alloc_size_descriptor_offset_bytes"]!=4 or
+                  e["static_contract"]["free_size_descriptor_offset_bytes"]!=4 or
+                  e["descriptor_size_bytes_at_runtime"] is not None or
+                  e["actual_sysmmap_allocated_region_bytes"] is not None or
+                  e["actual_free_region_size_bytes"] is not None or
+                  e["mapping_meets_40MiB_minimum"] is not None or
+                  e["live_pixel_buffer_or_dma_ownership_verified"] or
+                  e["camera_firmware_flash_permitted"]):
+                  raise SystemExit("REJECT unsafe native mmap size claim")
+              a=e["listeners"]["AllocListener"]
+              f=e["listeners"]["FreeListener"]
+              if (a["native_descriptor_size_load"]!="0x00034e58" or
+                  a["all_descriptor_size_load_sites"]!=
+                      ["0x00034e30","0x00034e58"] or
+                  f["all_descriptor_size_load_sites"]!=
+                      ["0x00035048"] or
+                  not a["cached_and_plain_paths_use_same_descriptor_size_offset"] or
+                  not a["both_paths_join_before_CreateInstance"] or
+                  not e["cached_and_normal_allocation_use_descriptor_plus4_size"] or
+                  e["cached_allocation_returned_byte_length_verified"] or
+                  f["native_descriptor_size_load"]!="0x00035048" or
+                  a["actual_descriptor_size_bytes_observed"] or
+                  f["actual_descriptor_size_bytes_observed"] or
+                  a["runtime_mapping_bounds_verified"] or
+                  f["runtime_mapping_bounds_verified"]):
+                  raise SystemExit("REJECT native size descriptor evidence")
+              print("FW114_MMAP_40MIB_POINTER_CONTRACT",fw,
+                    "pool",e["static_contract"],
+                    "AllocListener",a["native_descriptor_size_load"],
+                    "FreeListener",f["native_descriptor_size_load"],
+                    "observed_alloc_bytes",e["actual_sysmmap_allocated_region_bytes"],
+                    "runtime_bounds_UNKNOWN",True)
+              print("FW114_MMAP_ALLOC_LISTENER_ARM_WINDOW",fw,
+                    a["allocation_branch_words"])
+              print("FW114_MMAP_FREE_LISTENER_ARM_WINDOW",fw,
+                    f["release_branch_words"])
+          print("PASS 40MiB pool-pointer lower bound from native ARM; "
+                "actual camera mmap size / DMA safety UNVERIFIED")
           print('PASS native ELF FW114/115 file-hash and sampled-symbol delta report')
           PY
 
