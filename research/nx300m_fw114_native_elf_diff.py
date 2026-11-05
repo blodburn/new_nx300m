@@ -30,6 +30,8 @@ import nx300m_fw114_sif_virtual_dispatch as sif_virtual
 import nx300m_fw114_jfif_r6_arg_provenance as jfif_arg
 import nx300m_fw114_hal_table_plus8_audit as hal_plus8
 import nx300m_fw114_photo_ycc_copy_boundary as photo_buffer
+import nx300m_fw114_photo_buffer_lifetime as lifetime
+import nx300m_fw114_cycc_provider_probe as cycc_provider
 import nx300m_fw114_arm_loader_abi as arm_loader
 import nx300m_fw114_runtime_linkage_audit as runtime_linkage
 
@@ -333,6 +335,7 @@ def analyze(archives: dict[str, Path], private_root: Path,
             root = private / ("root_" + version.replace(".", ""))
             run_reader(reader, platform, root)
             s["native_elfs"] = inspected_candidates(root)
+            s["cycc_ownership_provider_symbols"] = cycc_provider.inspect(root)
             s["offline_runtime_linkage"] = runtime_linkage.audit(root)
             route_paths[version] = select_route_elves(root)
             inventories[version] = s["native_elfs"]
@@ -358,6 +361,15 @@ def analyze(archives: dict[str, Path], private_root: Path,
         ycc_copy_boundary = photo_buffer.compare_versions(
             route_paths["1.14"][static_route.PHOTO],
             route_paths["1.15"][static_route.PHOTO])
+        memory_lifetime = lifetime.compare_versions(
+            route_paths["1.14"][static_route.PHOTO],
+            route_paths["1.15"][static_route.PHOTO])
+        pool_destructor_proof = {
+            version: cycc_provider.proof_mode2_pool_and_trivial_cycc_destructor(
+                evidence[version]["cycc_ownership_provider_symbols"],
+                memory_lifetime["fw"+version.replace(".","")])
+            for version in ("1.14","1.15")
+        }
         return {
             "scope": "UNOFFICIAL_MIRROR_OFFLINE_HOST_ONLY",
             "source_chain_of_custody_confirmed": False,
@@ -371,6 +383,8 @@ def analyze(archives: dict[str, Path], private_root: Path,
             "jfif_encode_r6_argument_provenance": jfif_r6_provenance,
             "hal_table_plus8_initialization_witness":hal_producer,
             "fw114_photo_ycc_copy_boundary":ycc_copy_boundary,
+            "fw114_photo_buffer_lifetime_branches":memory_lifetime,
+            "cycc_pool_destructor_native_proof":pool_destructor_proof,
             "camera_flash_permitted": False,
             "camera_isp_buffer_contract_verified": False,
             "camera_recovery_procedure_verified": False,
