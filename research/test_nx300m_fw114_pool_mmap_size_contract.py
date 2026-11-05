@@ -32,25 +32,41 @@ class MemoryMapSizeContract(unittest.TestCase):
         self.assertFalse(ok["actual_runtime_dma_coherency_established"])
         self.assertFalse(ok["firmware_flash_permitted"])
 
-    def test_decode_real_site_shaped_arm_synthetic_words(self):
-        begin=0x00034e54
-        code=(
-            0xe51b301c,
-            0xe5932004,
-            0xe51b301c,
-            0xe593300c,
-            0xe1a00002,
-            0xe1a01003,
-        )
+    def test_two_alloc_paths_read_same_descriptor_size(self):
+        begin=0x00034e24
+        # Synthetic ARM window; real firmware opcodes remain native CI-only.
+        code=tuple(
+            x.ARM_EXPECTED["AllocListener"].get(pc,0xe1a00000)
+            for pc in range(begin,0x34e80,4))
         proof=x.exact_listener_words(code,begin,"AllocListener")
-        self.assertEqual(proof["descriptor_size_offset"],4)
+        self.assertEqual(proof["all_descriptor_size_load_sites"],
+                         ["0x00034e30","0x00034e58"])
+        self.assertTrue(
+            proof["cached_and_plain_paths_use_same_descriptor_size_offset"])
+        self.assertTrue(proof["both_paths_join_before_CreateInstance"])
         self.assertFalse(proof["actual_descriptor_size_bytes_observed"])
-        mutated=list(code)
-        mutated[1]=0xe5932008
-        with self.assertRaisesRegex(ValueError,"descriptor size path"):
-            x.exact_listener_words(tuple(mutated),begin,"AllocListener")
+        for pc in (0x34e30,0x34e58,0x34e28,0x34e50):
+            mutated=list(code)
+            mutated[(pc-begin)//4]=0xe5932008
+            with self.subTest(pc=pc),self.assertRaisesRegex(
+                ValueError,"descriptor size path"):
+                x.exact_listener_words(tuple(mutated),begin,"AllocListener")
         with self.assertRaises(ValueError):
             x.exact_listener_words(code,begin,"UnexpectedListener")
+
+    def test_free_length_reads_same_descriptor_offset(self):
+        begin=0x35044
+        words=tuple(
+            x.ARM_EXPECTED["FreeListener"].get(pc,0xe1a00000)
+            for pc in range(begin,0x35058,4)
+        )
+        proof=x.exact_listener_words(words,begin,"FreeListener")
+        self.assertEqual(proof["all_descriptor_size_load_sites"],
+                         ["0x00035048"])
+        mutated=list(words)
+        mutated[1]=0xe5932008
+        with self.assertRaises(ValueError):
+            x.exact_listener_words(tuple(mutated),begin,"FreeListener")
 
     def test_bounded_arm_window(self):
         words=tuple(range(32))
