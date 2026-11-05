@@ -17,6 +17,8 @@ import nx300m_fw114_sif_virtual_dispatch as sif
 import nx300m_native_jpeg_abi_boundary_audit as jpeg
 
 TARGET = "RegisterMemoryMapListner()"
+PLT_SYMBOL = "_Z24RegisterMemoryMapListnerv"
+PLT_RELOCATION_SLOT = 0x00067648
 MAX_ELF = 2 * 1024 * 1024
 MAX_METHODS = 4000
 MAX_FUNCTION = 32768
@@ -24,19 +26,32 @@ MAX_DIRECT_CALLS = 128
 
 
 def direct_target_sites(edges: dict, target: str = TARGET) -> list[dict]:
-    """Extract explicit same-library BL references, never infer BLX/vtable."""
+    """Resolve exact direct BL to local method OR ARM PLT relocation.
+
+    An ELF PLT edge is a *possible* symbol call. The dynamic linker
+    target and live registration on a physical camera are not proven.
+    """
     entries = edges.get("identified_callsite_evidence")
     if not isinstance(entries, list):
         raise ValueError("No bounded native ARM callsite evidence")
     if edges.get("identified_calls_truncated"):
         raise ValueError("Truncated ARM direct-call inventory")
-    return [
-        {"callsite": e["callsite"],
-         "target_kind": e["target_kind"],
-         "target_symbol": e["target_symbol"]}
-        for e in entries
-        if e.get("target_kind") == "local" and e.get("target_symbol") == target
-    ]
+    result = []
+    for item in entries:
+        local = (item.get("target_kind") == "local" and
+                 item.get("target_symbol") == target)
+        plt = (item.get("target_kind") == "import" and
+               item.get("target_symbol") == PLT_SYMBOL)
+        if local or plt:
+            result.append({
+                "callsite": item["callsite"],
+                "target_kind": item["target_kind"],
+                "target_symbol": item["target_symbol"],
+                "static_edge_class": "ARM_BL_TO_LOCAL" if local else
+                                     "ARM_BL_TO_PLT_IMPORT",
+                "runtime_dynamic_linker_binding_proven": False,
+            })
+    return result
 
 
 def call_window(words: tuple[int, ...], start: int, site: int) -> dict:
@@ -80,6 +95,8 @@ def inspect(path: Path) -> dict:
         raise ValueError("Native registration target symbol does not match")
     relocs = jpeg.relocations(sif.arm.offline_tool(
         ["readelf", "-Wr", str(path)]))
+    if relocs.get(PLT_RELOCATION_SLOT) != PLT_SYMBOL:
+        raise ValueError("Version-specific registration PLT relocation drift")
     methods = [
         (name, item) for name, item in sorted(symbols.items())
         if item["kind"] == "FUNC" and
@@ -111,6 +128,8 @@ def inspect(path: Path) -> dict:
                 **call_window(words, start, site),
                 "callee": TARGET,
                 "callee_address": f"0x{target_address:08x}",
+                "static_edge_class": hit["static_edge_class"],
+                "runtime_dynamic_linker_binding_proven": False,
                 "real_camera_invocation_proven": False,
                 "callback_registration_success_proven": False,
             })
@@ -122,6 +141,9 @@ def inspect(path: Path) -> dict:
         "registration_target": TARGET,
         "registration_function_address": f"0x{target_address:08x}",
         "registration_function_bytes": native["size"],
+        "registration_PLT_relocation_slot":
+            f"0x{PLT_RELOCATION_SLOT:08x}",
+        "registration_PLT_native_symbol": PLT_SYMBOL,
         "examined_arm_function_count": examined,
         "direct_bl_callers": callers,
         "direct_bl_caller_count": len(callers),
