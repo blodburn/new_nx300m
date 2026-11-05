@@ -25,6 +25,8 @@ on:
       - 'research/test_nx300m_fw114_photo_buffer_lifetime.py'
       - 'research/nx300m_fw114_cycc_provider_probe.py'
       - 'research/test_nx300m_fw114_cycc_provider_probe.py'
+      - 'research/nx300m_fw114_pool_slot8_writer_audit.py'
+      - 'research/test_nx300m_fw114_pool_slot8_writer_audit.py'
       - 'research/test_nx300m_fw114_capture_jpeg_route.py'
       - 'research/test_nx300m_fw114_function_proofs.py'
       - 'research/test_nx300m_fw114_native_elf_diff.py'
@@ -54,6 +56,8 @@ on:
       - 'research/test_nx300m_fw114_photo_buffer_lifetime.py'
       - 'research/nx300m_fw114_cycc_provider_probe.py'
       - 'research/test_nx300m_fw114_cycc_provider_probe.py'
+      - 'research/nx300m_fw114_pool_slot8_writer_audit.py'
+      - 'research/test_nx300m_fw114_pool_slot8_writer_audit.py'
       - 'research/test_nx300m_fw114_capture_jpeg_route.py'
       - 'research/test_nx300m_fw114_function_proofs.py'
       - 'research/test_nx300m_fw114_native_elf_diff.py'
@@ -88,6 +92,7 @@ jobs:
           python3 research/test_nx300m_fw114_photo_ycc_copy_boundary.py
           python3 research/test_nx300m_fw114_photo_buffer_lifetime.py
           python3 research/test_nx300m_fw114_cycc_provider_probe.py
+          python3 research/test_nx300m_fw114_pool_slot8_writer_audit.py
           python3 research/test_nx300m_fw114_binary_delta.py
 
       - name: Install pinned offline UBI reader in ephemeral venv
@@ -676,6 +681,28 @@ jobs:
                       print("FW114_CYCC_PROVIDER_ABSENT",v,name)
           print("PASS FW1.14/1.15 CYcc memory pool/destructor provider "
                 "metadata scan; no actual on-device DMA lifetime proof")
+          pool=report["fw114_pool_slot8_writer_inventory"]
+          if (not pool["photo_ELF_sha256_same"] or
+              not pool["method_count_equal"] or
+              pool["live_camera_buffer_ownership_verified"] or
+              pool["camera_firmware_flash_permitted"]):
+              raise SystemExit("REJECT source-version pool ABI mismatch")
+          for fw in ("fw114","fw115"):
+              entry=pool[fw]
+              if (entry["native_pool_method_count"]<3 or
+                  entry["native_pool_method_count"]>80 or
+                  entry["actual_pool_slot8_writer_and_allocator_proven"] or
+                  entry["physical_camera_dma_reuse_interval_proven"] or
+                  entry["safe_film_processing_hook_proven"] or
+                  entry["firmware_install_or_flash_permitted"]):
+                  raise SystemExit("REJECT unsupported pool object ownership claim")
+              for method in entry["CMemoryPool_native_methods"]:
+                  print("FW114_POOL_NATIVE_METHOD",fw,method["method"],
+                        method["address"],"bytes",method["size"],
+                        "STORE_PLUS8",method["field_plus8_store_candidates"],
+                        "CALLS",method["named_native_arm_direct_calls"])
+          print("PASS real FW114/115 native pool method and candidate +8 "
+                "writer inventory; runtime memory reuse NOT PROVEN")
           print('PASS native ELF FW114/115 file-hash and sampled-symbol delta report')
           PY
 
