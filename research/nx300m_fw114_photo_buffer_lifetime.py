@@ -22,7 +22,7 @@ TRACK=(0x34b34,0x34b60,0x34b64,0x34b74,0x34b8c,
        0x34bac,0x34bdc,0x34ca8,0x34d78,0x34d94)
 MAX_BYTES=2*1024*1024
 # Bound instruction excerpts only; the output is machine-code text, no images.
-WINDOWS=((0x34b18,0x34c14),(0x34d70,0x34da0))
+WINDOWS=((0x34b18,0x34c14),(0x34d70,0x34d9c))
 
 
 def arm_direct_b(opcode:int,site:int)->dict|None:
