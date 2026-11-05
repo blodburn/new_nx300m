@@ -26,6 +26,38 @@ Source observations must determine where r1 comes from in the actual instruction
 
 The native CI logs use prefix `FW114_SYSMMAP_OSIF_AAPCS_WINDOW`. They do not export or publish vendor ELF data as artifacts.
 
+## Native FW1.14/1.15 ARM result — exact static r1 transfer
+
+The actual native CI first confirmed that both FW versions share
+the same `sysmmap_osif_alloc` and `sysmmap_osif_free` bytes. It also
+identified the same exact ARM32 save/restore opcodes:
+
+```text
+sysmmap_osif_alloc() @ 0xc7a0
+   STR r1,[fp,#-28]  @ 0xc7b8  (0xe50b101c)
+   ...
+   MOV r0,#0         @ 0xc80c  (0xe3a00000)
+   LDR r1,[fp,#-28]  @ 0xc810  (0xe51b101c)
+   MOV r2,#3         @ 0xc814  (0xe3a02003)
+   MOV r3,#1         @ 0xc818  (0xe3a03001)
+   BL mmap           @ 0xc81c
+
+sysmmap_osif_free() @ 0xc8bc
+   STR r0,[fp,#-16]  @ 0xc8c8  (0xe50b0010)
+   STR r1,[fp,#-20]  @ 0xc8cc  (0xe50b1014)
+   LDR r0,[fp,#-16]  @ 0xc8d0  (0xe51b0010)
+   LDR r1,[fp,#-20]  @ 0xc8d4  (0xe51b1014)
+   BL munmap         @ 0xc8d8
+```
+
+The new source verifier `exact_static_abi_forwarding` rejects any
+change in these exact instructions. The function entry second argument
+is saved to stack and restored to `mmap` length register `r1`;
+similarly the `munmap` second argument is restored to `r1`.
+This remains **a static ABI transfer observation**, not a direct
+measurement of runtime requested or allocated bytes or proof against
+stack aliases and races.
+
 ## Still required
 
 1. Prove the `mmap` length argument's precise internal dataflow with branch-aware provenance and compare with the callback descriptor +4.
