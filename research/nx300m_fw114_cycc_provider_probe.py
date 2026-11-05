@@ -124,6 +124,87 @@ def critical_arm_body(data:bytes,loads:list[tuple[int,int,int]],
     }
 
 
+def proof_mode2_pool_and_trivial_cycc_destructor(
+    provider_report:dict,lifetime_report:dict
+)->dict:
+    """Exact FW1.14 ARM byte witness; never infer a live DMA lock."""
+    providers=provider_report["provider_elfs"]
+
+    def get(name:str,prefix:str)->dict:
+        lib=providers.get(name)
+        if not lib or not lib["present"]:
+            raise ValueError("Native pool/CYcc library not present")
+        found=[x for x in lib["target_symbols"] if x["name"].startswith(prefix)]
+        if len(found)!=1 or "offline_native_ARM_body" not in found[0]:
+            raise ValueError("Missing or ambiguous original native ARM method")
+        return found[0]
+
+    destructor=get("libmm-type.so","CYcc::~CYcc()")
+    pool=get("libmm-photo.so","CMemoryPool::GetAddr(")
+    if destructor["address"]!="0x00002a00" or destructor["function_bytes"]!=36:
+        raise ValueError("CYcc destructor body changed")
+    if pool["address"]!="0x0003534c" or pool["function_bytes"]!=172:
+        raise ValueError("Memory pool GetAddr body changed")
+
+    def words(method:dict)->dict[str,str]:
+        return {w["pc"]:w["opcode"] for w in method[
+            "offline_native_ARM_body"]["arm_instruction_words"]}
+
+    d=words(destructor)
+    expected_destructor={
+        "0x00002a00":"0xe52db004", # push frame pointer
+        "0x00002a04":"0xe28db000",
+        "0x00002a08":"0xe24dd00c",
+        "0x00002a0c":"0xe50b0008", # store this on stack
+        "0x00002a10":"0xe51b3008",
+        "0x00002a14":"0xe1a00003",
+        "0x00002a18":"0xe28bd000",
+        "0x00002a1c":"0xe8bd0800",
+        "0x00002a20":"0xe12fff1e", # BX LR
+    }
+    if d!=expected_destructor or destructor[
+        "offline_native_ARM_body"]["direct_ARM_BL_edges"] or destructor[
+        "offline_native_ARM_body"]["register_indirect_branches"]:
+        raise ValueError("CYcc destructor is not verified trivial ARM function")
+
+    expected_pool_words={
+        "0x00035398":"0xe51b3014", # LDR r3,[fp,#-20] enum
+        "0x0003539c":"0xe3530002", # CMP r3,#2
+        "0x000353a0":"0x1a000002", # BNE error mode handling
+        "0x000353a4":"0xe51b3010", # LDR r3,[fp,#-16] this
+        "0x000353a8":"0xe5933008", # LDR r3,[r3,#8]
+        "0x000353ac":"0xea00000a", # B to return
+        "0x000353dc":"0xe1a00003", # MOV r0,r3
+    }
+    p=words(pool)
+    if any(p.get(pc)!=code for pc,code in expected_pool_words.items()):
+        raise ValueError("CMemoryPool::GetAddr mode 2 static return changed")
+
+    first=lifetime_report["code_windows"][0]["arm_words"]
+    caller={w["pc"]:w["arm_word"] for w in first}
+    if caller.get("0x00034b70")!="0xe3a01002" or caller.get(
+        "0x00034b74")!="0xebffd3bd" or caller.get(
+        "0x00034b50")!="0x0a000022":
+        raise ValueError("FW1.14 memory pool enum 2 or type guard changed")
+    if not any(x["pc"]=="0x00034b50" and
+               x["target"]=="0x00034be0" and
+               x["condition"]==0
+               for x in lifetime_report["internal_arm_branch_edges"]):
+        raise ValueError("FW1.14 type 1 resize branch target changed")
+    return {
+        "method_provider":"FW114_LIBMM_TYPE_AND_LIBMM_PHOTO_NATIVE_ARM",
+        "getter_type_1_conditional_memorypool_resize_branch":True,
+        "memorypool_GetAddr_enum_2_reads_pool_object_offset8":True,
+        "CYcc_destructor_has_no_direct_free_or_calls":True,
+        "CYcc_destructor_writes_only_its_own_stack_frame":True,
+        "pointer_held_in_pool_slot_has_ownership_or_refcount_proof":False,
+        "pool_slot_overwrite_or_reuse_interval_verified":False,
+        "pixel_YCC_input_DMA_coherency_or_lifetime_proven":False,
+        "safe_film_engine_hook_permitted":False,
+        "firmware_flash_permitted":False,
+    }
+
+
 def inspect(root:Path)->dict:
     providers=safe_sources(root)
     report={}
