@@ -722,6 +722,36 @@ jobs:
                   x["on_camera_capture_timing_proven"] or
                   x["camera_firmware_install_or_flash_permitted"]):
                   raise SystemExit("REJECT bounded native pool caller evidence")
+              mm=x["native_pool_mmap_pointer_flow"]
+              if (not mm["sysmmap_cached_alloc_and_alloc_results_stored_for_CreateInstance"]
+                  or not mm["FreeListener_gets_pool_mode0_base_then_calls_sysmmap_free"]
+                  or mm["per_shutter_reallocation_proven"] or
+                  mm["concurrent_mapping_access_and_DMA_coherency_proven"]
+                  or mm["camera_firmware_flash_permitted"]):
+                  raise SystemExit("REJECT unsafe FW114 mmap pool base proof")
+              entry=mm["listeners"]
+              if set(entry)!=set(("AllocListener","FreeListener")) or
+                  entry["AllocListener"]["function_address"]!="0x00034d9c" or
+                  entry["FreeListener"]["function_address"]!="0x00034fc8":
+                  raise SystemExit("REJECT pool listener native function identity")
+              expected=(
+                  ("AllocListener","0x00034e44","sysmmap_cached_alloc"),
+                  ("AllocListener","0x00034e6c","sysmmap_alloc"),
+                  ("AllocListener","0x00034e7c",
+                    "_ZN11CMemoryPool14CreateInstanceEj"),
+                  ("FreeListener","0x00035038",
+                    "_ZN11CMemoryPool7GetAddrE8eMemMode"),
+                  ("FreeListener","0x00035058","sysmmap_free"),
+                  ("FreeListener","0x00035068",
+                    "_ZN11CMemoryPool7DestoryEv"),
+              )
+              for name,pc,target in expected:
+                  if entry[name]["verified_plt_imports"].get(pc)!=target:
+                      raise SystemExit("REJECT pool mapping import mismatch")
+              print("PASS_FW114_NATIVE_POOL_MMAP_ALLOC_FREE",fw,
+                    [(name,entry[name]["verified_plt_imports"])
+                     for name in ("AllocListener","FreeListener")],
+                    "NO_CAPTURE_TIMING_OR_DMA_PROOF")
               print("FW114_NATIVE_POOL_CREATE_CALLERS",fw,
                     "examined",x["examined_method_count"],
                     "callers",x["pool_callsite_candidates"])
