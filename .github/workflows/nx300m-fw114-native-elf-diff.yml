@@ -21,6 +21,8 @@ on:
       - 'research/test_nx300m_fw114_hal_table_plus8_audit.py'
       - 'research/nx300m_fw114_photo_ycc_copy_boundary.py'
       - 'research/test_nx300m_fw114_photo_ycc_copy_boundary.py'
+      - 'research/nx300m_fw114_photo_buffer_lifetime.py'
+      - 'research/test_nx300m_fw114_photo_buffer_lifetime.py'
       - 'research/test_nx300m_fw114_capture_jpeg_route.py'
       - 'research/test_nx300m_fw114_function_proofs.py'
       - 'research/test_nx300m_fw114_native_elf_diff.py'
@@ -46,6 +48,8 @@ on:
       - 'research/test_nx300m_fw114_hal_table_plus8_audit.py'
       - 'research/nx300m_fw114_photo_ycc_copy_boundary.py'
       - 'research/test_nx300m_fw114_photo_ycc_copy_boundary.py'
+      - 'research/nx300m_fw114_photo_buffer_lifetime.py'
+      - 'research/test_nx300m_fw114_photo_buffer_lifetime.py'
       - 'research/test_nx300m_fw114_capture_jpeg_route.py'
       - 'research/test_nx300m_fw114_function_proofs.py'
       - 'research/test_nx300m_fw114_native_elf_diff.py'
@@ -78,6 +82,7 @@ jobs:
           python3 research/test_nx300m_fw114_jfif_r6_arg_provenance.py
           python3 research/test_nx300m_fw114_hal_table_plus8_audit.py
           python3 research/test_nx300m_fw114_photo_ycc_copy_boundary.py
+          python3 research/test_nx300m_fw114_photo_buffer_lifetime.py
           python3 research/test_nx300m_fw114_binary_delta.py
 
       - name: Install pinned offline UBI reader in ephemeral venv
@@ -607,6 +612,31 @@ jobs:
                         "ARM",item["bounded_arm_instruction_window"])
           print("PASS real 1.14/1.15 photo YCC pointer-getter and copy-call "
                 "static analysis; no DMA ownership or safe film hook verified")
+          lifetime=report["fw114_photo_buffer_lifetime_branches"]
+          if (not lifetime["same_photo_ELF_SHA256"] or
+              not lifetime["same_function_SHA256"] or
+              lifetime["camera_DMA_buffer_lifetime_verified"] or
+              lifetime["camera_firmware_patch_allowed"]):
+              raise SystemExit("REJECT native lifetime report version mismatch")
+          for v in ("fw114","fw115"):
+              a=lifetime[v]
+              if (a["function_address"]!="0x00034b18" or
+                  a["function_bytes"]!=644 or
+                  a["native_pool_buffer_ownership_or_refcount_verified"] or
+                  a["native_resize_output_lifetime_verified"] or
+                  a["destructor_timing_proves_DMA_safety"] or
+                  a["camera_capture_runtime_proven"] or
+                  a["camera_firmware_flash_permitted"]):
+                  raise SystemExit("REJECT false FW1.14 DMA lifetime proof")
+              print("FW114_PHOTO_POOL_RESIZE_DESTRUCTOR_BRANCHES",v,
+                    "ARM_DIRECT_BRANCHES",a["internal_arm_branch_edges"],
+                    "CALLS",a["actual_native_call_sites"])
+              for window in a["code_windows"]:
+                  print("FW114_PHOTO_OWNER_ARM_WINDOW",v,
+                        window["first"],window["end_exclusive"],
+                        window["arm_words"])
+          print("PASS FW1.14/1.15 photo conditional pool/resize/destructor "
+                "static branch evidence; no camera DMA lifetime proof")
           print('PASS native ELF FW114/115 file-hash and sampled-symbol delta report')
           PY
 
