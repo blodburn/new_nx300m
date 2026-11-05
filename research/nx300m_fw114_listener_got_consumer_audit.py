@@ -15,6 +15,8 @@ import struct
 import nx300m_fw114_function_proofs as elf
 import nx300m_fw114_sif_virtual_dispatch as sif
 import nx300m_fw114_listener_callback_registration as callback
+import nx300m_fw114_sif_callgraph as calls
+import nx300m_native_jpeg_abi_boundary_audit as jpeg
 
 MAX_FILE = 2 * 1024 * 1024
 MAX_FUNCTIONS = 4000
@@ -192,6 +194,20 @@ def scan_words(
     return out
 
 
+def bounded_arm_window(words: tuple[int, ...], start: int, site: int,
+                       before: int = 10, after: int = 30) -> list[dict]:
+    """Report limited ARM words around one verified static relocation read."""
+    if (not words or start & 3 or (site - start) & 3 or
+        site < start or site >= start + 4 * len(words) or
+        len(words) * 4 > MAX_FUNCTION_BYTES or
+        not 0 <= before <= 64 or not 0 <= after <= 64):
+        raise ValueError("Invalid bounded native callback reader window")
+    i = (site - start) // 4
+    return [{"pc": f"0x{start+4*j:08x}",
+             "word": f"0x{words[j]:08x}"}
+            for j in range(max(0, i-before), min(len(words), i+after+1))]
+
+
 def inspect(path: Path) -> dict:
     if path.is_symlink() or not path.is_file() or not (
         1024 <= path.stat().st_size <= MAX_FILE
@@ -215,6 +231,10 @@ def inspect(path: Path) -> dict:
     symbols = sif.symbol_index(sif.arm.offline_tool(
         ["readelf", "-Ws", str(path)]))
     candidates = []
+    registration = None
+    defined = calls.defined_symbols(path)
+    relocations = jpeg.relocations(sif.arm.offline_tool(
+        ["readelf", "-Wr", str(path)]))
     examined = 0
     methods = [(name, item) for name, item in sorted(symbols.items())
                if item["kind"] == "FUNC" and
@@ -232,12 +252,40 @@ def inspect(path: Path) -> dict:
             continue
         words = struct.unpack_from("<" + "I" * (size // 4), raw, offset)
         examined += 1
-        candidates.extend(scan_words(raw, segments, address, words, slots,
-                                     name))
+        matched = scan_words(raw, segments, address, words, slots, name)
+        candidates.extend(matched)
+        if name == "RegisterMemoryMapListner()":
+            if registration is not None:
+                raise ValueError("Ambiguous native listener registration symbol")
+            graph = calls.collect_edges(raw, segments, address, size,
+                                        defined, relocations)
+            if graph["identified_calls_truncated"]:
+                raise ValueError("Truncated listener registration callgraph")
+            registration = {
+                "native_function": name,
+                "function_address": f"0x{address:08x}",
+                "function_bytes": size,
+                "actual_GOT_load_sites": matched,
+                "native_direct_call_candidates":
+                    graph["identified_callsite_evidence"],
+                "arm_word_windows": [
+                    {"load_site": x["load_site"],
+                     "words": bounded_arm_window(
+                         words, address, int(x["load_site"], 16))}
+                    for x in matched
+                ],
+                "callback_registration_call_verified": False,
+                "camera_thread_or_callback_execution_verified": False,
+            }
         if len(candidates) > MAX_CANDIDATES:
             raise ValueError("Too many listener GOT readers")
+    if registration is None or set(
+        x["target_listener"] for x in registration["actual_GOT_load_sites"]
+    ) != set(callback.TARGETS):
+        raise ValueError("Missing both listener GOT loads in registration owner")
     return {
         "scope": "UNOFFICIAL_FW114_PHOTO_ARM_STATIC_GOT_CONSUMERS_ONLY",
+        "focused_registration_symbol": registration,
         "libmm_photo_sha256": hashlib.sha256(raw).hexdigest(),
         "listener_GLOB_DAT_slots":
             {name: f"0x{site:08x}" for site, name in sorted(slots.items())},
