@@ -34,6 +34,7 @@ import nx300m_fw114_photo_buffer_lifetime as lifetime
 import nx300m_fw114_cycc_provider_probe as cycc_provider
 import nx300m_fw114_pool_slot8_writer_audit as pool_slot8
 import nx300m_fw114_pool_mmap_size_contract as mmap_contract
+import nx300m_fw114_sysmmap_provider_audit as sysmmap_provider
 import nx300m_fw114_pool_create_caller_audit as pool_callers
 import nx300m_fw114_listener_callback_registration as listeners
 import nx300m_fw114_listener_got_consumer_audit as listener_got
@@ -396,6 +397,8 @@ def analyze(archives: dict[str, Path], private_root: Path,
             extracted_roots["1.14"], extracted_roots["1.15"])
         photo_initialization_links = photo_init_callers.compare_versions(
             extracted_roots["1.14"], extracted_roots["1.15"])
+        sysmmap_native_provider = sysmmap_provider.compare_versions(
+            extracted_roots["1.14"],extracted_roots["1.15"])
         pool_destructor_proof = {
             version: cycc_provider.proof_mode2_pool_and_trivial_cycc_destructor(
                 evidence[version]["cycc_ownership_provider_symbols"],
@@ -418,6 +421,7 @@ def analyze(archives: dict[str, Path], private_root: Path,
             "fw114_photo_buffer_lifetime_branches":memory_lifetime,
             "fw114_pool_slot8_writer_inventory":pool_writers,
             "fw114_pool_mmap_size_contract":arena_size_contract,
+            "fw114_native_sysmmap_provider":sysmmap_native_provider,
             "fw114_pool_creation_callers":pool_origins,
             "fw114_pool_listener_relocation_witnesses":listener_relocation_witnesses,
             "fw114_pool_listener_got_consumers":listener_got_consumers,
