@@ -931,8 +931,8 @@ jobs:
                     "examined",e["selected_names"],
                     "exact_symbol_modules",e["modules_with_exact_registration_symbol"])
               for name,m in e["modules"].items():
-                  if m["module_loaded_on_live_camera_verified"] or
-                      m["runtime_registration_invocation_proven"]:
+                  if (m["module_loaded_on_live_camera_verified"] or
+                      m["runtime_registration_invocation_proven"]):
                       raise SystemExit("REJECT false native module execution")
                   if (m["defined_or_undefined_symbols"] or
                       m["native_exact_symbol_relocations"]):
