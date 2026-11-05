@@ -37,6 +37,8 @@ TARGETS = (
     "sysmmap_segment_free",
     "sysmmap_segment_init",
     "sysmmap_segment_destroy",
+    "sysmmap_osif_alloc",
+    "sysmmap_osif_free",
 )
 MAX_PATHS = 60000
 MAX_BYTES = 32 * 1024 * 1024
