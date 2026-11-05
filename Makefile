@@ -30,6 +30,7 @@ test: multimodel-test
 	@python3 research/test_nx300m_fw114_photo_ycc_copy_boundary.py
 	@python3 research/test_nx300m_fw114_photo_buffer_lifetime.py
 	@python3 research/test_nx300m_fw114_cycc_provider_probe.py
+	@python3 research/test_nx300m_fw114_pool_slot8_writer_audit.py
 	@python3 research/test_nx300m_fw114_function_proofs.py
 	@python3 research/test_nx300m_fw114_capture_jpeg_route.py
 	@python3 research/test_nx300m_fw114_runtime_metadata_gate.py
