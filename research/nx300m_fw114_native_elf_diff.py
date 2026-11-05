@@ -31,6 +31,7 @@ import nx300m_fw114_jfif_r6_arg_provenance as jfif_arg
 import nx300m_fw114_hal_table_plus8_audit as hal_plus8
 import nx300m_fw114_photo_ycc_copy_boundary as photo_buffer
 import nx300m_fw114_photo_buffer_lifetime as lifetime
+import nx300m_fw114_cycc_provider_probe as cycc_provider
 import nx300m_fw114_arm_loader_abi as arm_loader
 import nx300m_fw114_runtime_linkage_audit as runtime_linkage
 
@@ -334,6 +335,7 @@ def analyze(archives: dict[str, Path], private_root: Path,
             root = private / ("root_" + version.replace(".", ""))
             run_reader(reader, platform, root)
             s["native_elfs"] = inspected_candidates(root)
+            s["cycc_ownership_provider_symbols"] = cycc_provider.inspect(root)
             s["offline_runtime_linkage"] = runtime_linkage.audit(root)
             route_paths[version] = select_route_elves(root)
             inventories[version] = s["native_elfs"]
