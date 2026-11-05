@@ -838,6 +838,19 @@ jobs:
                           candidate["target_listener"]] or
                       candidate["is_registration_or_runtime_invocation_proof"]):
                       raise SystemExit("REJECT false callback GOT invocation")
+              owner=entry["focused_registration_symbol"]
+              if (owner["native_function"]!="RegisterMemoryMapListner()" or
+                  owner["callback_registration_call_verified"] or
+                  owner["camera_thread_or_callback_execution_verified"] or
+                  set(x["target_listener"] for x in
+                      owner["actual_GOT_load_sites"])!=set(expected)):
+                  raise SystemExit("REJECT FW114 callback registration owner")
+              print("FW114_NATIVE_REGISTER_LISTENER_CALLGRAPH",fw,
+                    owner["function_address"],"size",owner["function_bytes"],
+                    "direct_calls",owner["native_direct_call_candidates"])
+              for region in owner["arm_word_windows"]:
+                  print("FW114_NATIVE_REGISTER_LISTENER_ARM_WORDS",fw,
+                        region["load_site"],region["words"])
               print("FW114_LISTENER_GOT_READ_CANDIDATES",fw,
                     entry["candidate_count"],
                     entry["possible_listener_GOT_loads"])
