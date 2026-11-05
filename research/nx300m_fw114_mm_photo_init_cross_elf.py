@@ -112,7 +112,7 @@ def inspect_one(path: Path) -> dict:
         data = path.read_bytes()
         segments = elf.program_headers(path)
         defined = graph.defined_symbols(path)
-        native_imports = jpeg.relocations(rt)
+        native_imports = jpeg.relocations(rt) if plt else {}
         # An imported PLT relocation alone cannot establish the executable
         # callsite. Resolve the actual ARM direct BL for each method.
         for address, size in method_inventory(table):
