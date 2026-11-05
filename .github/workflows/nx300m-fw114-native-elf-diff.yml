@@ -1262,6 +1262,15 @@ jobs:
                       m["exact_live_argument_length_known"]):
                       raise SystemExit("REJECT SYSMMAP allocator dispatch change")
                   for c in m["calls"]:
+                      w=c["immediate_r1_writer_witness"]
+                      if (not w["only_static_local_r1_writer_witness"] or
+                          w["unmodeled_aliases_branches_or_other_writers_excluded"] or
+                          w["same_length_as_listener_descriptor_proven"] or
+                          w["live_allocated_bytes_measured"]):
+                          raise SystemExit("REJECT changed native r1 site")
+                      print("FW114_SYSMMAP_IMMEDIATE_R1_WRITER",fw,name,
+                            c["site"],w["writer_site"],w["writer_opcode"],
+                            w["value"],"UNKNOWN_ACTUAL_BYTES")
                       if (c["r1_is_actual_allocated_byte_count_proven"] or
                           c["same_value_as_listener_descriptor_plus4_proven"] or
                           c["runtime_camera_mmap_size_verified"] or
