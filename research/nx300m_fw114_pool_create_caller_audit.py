@@ -73,6 +73,7 @@ def inspect(path:Path)->dict:
     if not functions or len(functions)>MAX_METHODS:
         raise ValueError("Unexpected bounded FW native method inventory")
     matches=[]
+    lifecycle={}
     examined=0
     for name,fn in functions:
         start,size=fn["address"],fn["size"]
@@ -82,6 +83,18 @@ def inspect(path:Path)->dict:
             continue
         edges=calls.collect_edges(data,segs,start,size,defined,relocs)
         examined+=1
+        if name in ("AllocListener","FreeListener"):
+            if edges["identified_calls_truncated"]:
+                raise ValueError("Lifecycle ARM callgraph incomplete")
+            lifecycle[name]={
+                "start":f"0x{start:08x}",
+                "size":size,
+                "direct_bl_candidate_count":edges["arm_direct_bl_candidate_count"],
+                "named_arms_bl":edges["identified_callsite_evidence"],
+                "live_capture_frequency_proven":False,
+                "arena_allocation_size_proven":False,
+                "arena_runtime_base_address_proven":False,
+            }
         for e in edges["identified_callsite_evidence"]:
             target=e["target_symbol"]
             if not is_pool_lifecycle_call(target):
@@ -102,6 +115,7 @@ def inspect(path:Path)->dict:
         "sha256":hashlib.sha256(data).hexdigest(),
         "examined_method_count":examined,
         "pool_callsite_candidates":matches,
+        "allocation_release_listener_arms":lifecycle,
         "caller_search_is_complete_for_indirect_calls":False,
         "pool_base_address_at_runtime_proven":False,
         "pool_write_or_reuse_after_creation_proven":False,
