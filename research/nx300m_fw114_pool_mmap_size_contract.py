@@ -30,12 +30,25 @@ MAX_WINDOW = 80
 
 ARM_EXPECTED = {
     "AllocListener": {
-        0x00034e54: 0xe51b301c,  # native callback descriptor from fp-28
+        0x00034e24: 0xe3530000,  # strcmp outcome compared to zero
+        0x00034e28: 0x1a000009,  # BNE -> ordinary sysmmap_alloc path
+        0x00034e2c: 0xe51b301c,  # cached branch descriptor
+        0x00034e30: 0xe5932004,  # cached size descriptor+4 -> r2
+        0x00034e34: 0xe51b301c,
+        0x00034e38: 0xe593300c,  # cached mode descriptor+12
+        0x00034e3c: 0xe1a00002,  # cached requested size -> r0
+        0x00034e40: 0xe1a01003,  # cached mode -> r1
+        0x00034e44: 0xebffcd3c,  # BL sysmmap_cached_alloc (native relocation)
+        0x00034e50: 0xea000008,  # B -> common CreateInstance block
+        0x00034e54: 0xe51b301c,  # ordinary descriptor from fp-28
         0x00034e58: 0xe5932004,  # descriptor+4 -> r2 requested size
         0x00034e5c: 0xe51b301c,
         0x00034e60: 0xe593300c,  # descriptor+12 -> r3 mmap mode
         0x00034e64: 0xe1a00002,  # syscall arg r0 = requested size
         0x00034e68: 0xe1a01003,  # syscall arg r1 = mode
+        0x00034e6c: 0xebffca32,  # BL sysmmap_alloc
+        0x00034e78: 0xe51b0010,  # common r0 from mapped pointer
+        0x00034e7c: 0xebffc8ae,  # BL CMemoryPool::CreateInstance
     },
     "FreeListener": {
         0x00035044: 0xe51b3018,  # callback descriptor from fp-24
@@ -98,16 +111,32 @@ def exact_listener_words(
             words[idx] != opcode):
             raise ValueError(f"Changed ARM descriptor size path {name} {pc:#x}")
 
-    size_pc = (0x00034e58 if name == "AllocListener" else 0x00035048)
-    instruction = words[(size_pc - start) // 4]
-    mem = arm.decode_mem_word(instruction)
-    if (mem is None or mem["kind"] != "LDR" or
-        mem["offset"] != 4 or mem["base_register"] != 3 or
-        mem["data_register"] != 2):
-        raise ValueError("ARM descriptor size no longer loaded from r3+4")
+    size_sites = ((0x00034e30, 0x00034e58)
+                  if name == "AllocListener" else (0x00035048,))
+    for pc in size_sites:
+        instruction = words[(pc - start) // 4]
+        mem = arm.decode_mem_word(instruction)
+        if (mem is None or mem["kind"] != "LDR" or
+            mem["offset"] != 4 or mem["base_register"] != 3 or
+            mem["data_register"] != 2):
+            raise ValueError("ARM descriptor size no longer loaded from r3+4")
+    if name == "AllocListener":
+        # Cond=NE, branch ARM PC+8+imm24*4; exact branch to normal path.
+        branch_word = words[(0x34e28-start)//4]
+        ordinary_target = 0x34e28+8+(branch_word & 0xffffff)*4
+        common_word = words[(0x34e50-start)//4]
+        common_target = 0x34e50+8+(common_word & 0xffffff)*4
+        if ordinary_target != 0x34e54 or common_target != 0x34e78:
+            raise ValueError("Changed cached vs ordinary map branch targets")
     return {
         "callback": name,
-        "native_descriptor_size_load": f"0x{size_pc:08x}",
+        "native_descriptor_size_load": f"0x{size_sites[-1]:08x}",
+        "all_descriptor_size_load_sites": [
+            f"0x{pc:08x}" for pc in size_sites],
+        "cached_and_plain_paths_use_same_descriptor_size_offset":
+            name == "AllocListener",
+        "both_paths_join_before_CreateInstance":
+            name == "AllocListener",
         "descriptor_size_offset": 4,
         "verified_arm_opcodes": {
             f"0x{pc:08x}": f"0x{op:08x}" for pc, op in sites.items()
@@ -170,7 +199,8 @@ def inspect(path: Path) -> dict:
         "actual_sysmmap_allocated_region_bytes": None,
         "actual_free_region_size_bytes": None,
         "mapping_meets_40MiB_minimum": None,
-        "cached_allocation_path_length_verified": False,
+        "cached_and_normal_allocation_use_descriptor_plus4_size": True,
+        "cached_allocation_returned_byte_length_verified": False,
         "live_pixel_buffer_or_dma_ownership_verified": False,
         "camera_firmware_flash_permitted": False,
     }
