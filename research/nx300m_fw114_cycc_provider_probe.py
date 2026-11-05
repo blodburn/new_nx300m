@@ -86,7 +86,7 @@ def critical_arm_body(data:bytes,loads:list[tuple[int,int,int]],
     indirect=[]
     for i,op in enumerate(words):
         pc=address+4*i
-        target=si.arm.decode_arm_bl(op,pc)
+        target=symbols.arm.decode_arm_bl(op,pc)
         if target is not None:
             name=native_function_names.get(target)
             imported=None
