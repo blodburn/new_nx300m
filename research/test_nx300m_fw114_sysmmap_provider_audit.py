@@ -38,10 +38,12 @@ class SysmmapProvider(unittest.TestCase):
             "14: 0000d000 400 FUNC GLOBAL DEFAULT 12 sysmmap_segment_free\n"
             "15: 0000e000 112 FUNC GLOBAL DEFAULT 12 sysmmap_segment_init\n"
             "16: 0000f000 112 FUNC GLOBAL DEFAULT 12 sysmmap_segment_destroy\n"
+            "17: 00010000 112 FUNC GLOBAL DEFAULT 12 sysmmap_osif_alloc\n"
+            "18: 00011000 112 FUNC GLOBAL DEFAULT 12 sysmmap_osif_free\n"
         )
         r=a.parse_symbol_rows(src)
-        self.assertEqual(len(r),14)
-        self.assertEqual(len([x for x in r if x["is_defined"]]),13)
+        self.assertEqual(len(r),16)
+        self.assertEqual(len([x for x in r if x["is_defined"]]),15)
         self.assertTrue(any(x["symbol"]=="sysmmap_free" and not
                             x["is_defined"] for x in r))
         self.assertFalse(a.matching_target("sysmmap_alloc_more"))
