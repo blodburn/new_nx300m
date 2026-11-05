@@ -37,6 +37,8 @@ on:
       - 'research/test_nx300m_fw114_listener_registration_callers.py'
       - 'research/nx300m_fw114_listener_cross_elf_imports.py'
       - 'research/test_nx300m_fw114_listener_cross_elf_imports.py'
+      - 'research/nx300m_fw114_mm_photo_init_cross_elf.py'
+      - 'research/test_nx300m_fw114_mm_photo_init_cross_elf.py'
       - 'research/test_nx300m_fw114_capture_jpeg_route.py'
       - 'research/test_nx300m_fw114_function_proofs.py'
       - 'research/test_nx300m_fw114_native_elf_diff.py'
@@ -78,6 +80,8 @@ on:
       - 'research/test_nx300m_fw114_listener_registration_callers.py'
       - 'research/nx300m_fw114_listener_cross_elf_imports.py'
       - 'research/test_nx300m_fw114_listener_cross_elf_imports.py'
+      - 'research/nx300m_fw114_mm_photo_init_cross_elf.py'
+      - 'research/test_nx300m_fw114_mm_photo_init_cross_elf.py'
       - 'research/test_nx300m_fw114_capture_jpeg_route.py'
       - 'research/test_nx300m_fw114_function_proofs.py'
       - 'research/test_nx300m_fw114_native_elf_diff.py'
@@ -118,6 +122,7 @@ jobs:
           python3 research/test_nx300m_fw114_listener_got_consumer_audit.py
           python3 research/test_nx300m_fw114_listener_registration_callers.py
           python3 research/test_nx300m_fw114_listener_cross_elf_imports.py
+          python3 research/test_nx300m_fw114_mm_photo_init_cross_elf.py
           python3 research/test_nx300m_fw114_binary_delta.py
 
       - name: Install pinned offline UBI reader in ephemeral venv
@@ -959,6 +964,46 @@ jobs:
                             "relocations",m["native_exact_symbol_relocations"])
           print("PASS FW114/115 read-only selected ARM cross-ELF registration "
                 "refs; live callback timing and DMA lifetime UNPROVEN")
+          init=report["fw114_mm_photo_init_xelf_calls"]
+          if (not init["both_have_photo_library"] or
+              init["native_target"]!="mm_photo_init()" or
+              init["native_mangled_symbol"]!="_Z13mm_photo_initv" or
+              init["camera_runtime_init_sequence_proven"] or
+              init["flash_permitted"]):
+              raise SystemExit("REJECT mm_photo_init native symbol evidence")
+          for fw in ("fw114","fw115"):
+              v=init[fw]
+              if (not v["off_camera_static_analysis_only"] or
+                  "libmm-photo.so" not in v["selected_modules"] or
+                  v["possible_dlsym_indirect_thumb_or_other_ELF_paths_complete"] or
+                  v["on_camera_init_frequency_proven"] or
+                  v["on_camera_dma_ownership_proven"] or
+                  v["firmware_install_or_flash_permitted"]):
+                  raise SystemExit("REJECT photo init runtime overclaim")
+              for name,entry in v["modules"].items():
+                  if (entry["camera_boot_or_capture_execution_proven"] or
+                      entry["on_camera_dynamic_linker_binding_proven"] or
+                      entry["callback_or_pixel_dma_lifetime_verified"]):
+                      raise SystemExit("REJECT photo init per-module execution claim")
+                  for edge in entry["arm_direct_call_candidates"]:
+                      if (edge["edge_class"] not in
+                              ("ARM_BL_LOCAL","ARM_BL_PLT_IMPORT") or
+                          edge["runtime_binding_verified"] or
+                          edge["runtime_mm_photo_init_invoked"]):
+                          raise SystemExit("REJECT invalid ARM mm_photo_init link")
+                  if (entry["exact_native_symbol_rows"] or
+                      entry["exact_relocations"] or
+                      entry["arm_direct_call_candidates"]):
+                      print("FW114_MM_PHOTO_INIT_CALLER_MODULE",fw,name,
+                            "rows",entry["exact_native_symbol_rows"],
+                            "relocations",entry["exact_relocations"],
+                            "scanned",entry["examined_arm_methods"],
+                            "calls",entry["arm_direct_call_candidates"])
+              print("FW114_MM_PHOTO_INIT_MODULE_SUMMARY",fw,
+                    "selected",v["selected_modules"],
+                    "related",v["mm_photo_init_related_modules"])
+          print("PASS FW114/115 mm_photo_init cross-ELF ARM BL/PLT scan; "
+                "camera init timing and image DMA ownership NOT PROVEN")
           print('PASS native ELF FW114/115 file-hash and sampled-symbol delta report')
           PY
 
