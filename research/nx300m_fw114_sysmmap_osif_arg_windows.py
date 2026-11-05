@@ -120,6 +120,54 @@ def argument_context(words:tuple[int,...],start:int,site:int,
     }
 
 
+# Exact ARM32 EABI6 register forwarding across the OSIF wrapper.
+# This validates static opcode correspondence, not live mapping extent,
+# stack aliasing, concurrent call order or kernel syscall success.
+FORWARDING_OPCODES = {
+    "sysmmap_osif_alloc": {
+        0x0000c7b8:0xe50b101c,  # STR r1,[fp,#-28] input length
+        0x0000c80c:0xe3a00000,  # MOV r0,#0 mmap address
+        0x0000c810:0xe51b101c,  # LDR r1,[fp,#-28] mmap length
+        0x0000c814:0xe3a02003,  # MOV r2,#3 mmap prot
+        0x0000c818:0xe3a03001,  # MOV r3,#1 mmap flags
+    },
+    "sysmmap_osif_free": {
+        0x0000c8c8:0xe50b0010,  # STR r0,[fp,#-16] input base
+        0x0000c8cc:0xe50b1014,  # STR r1,[fp,#-20] input length
+        0x0000c8d0:0xe51b0010,  # LDR r0,[fp,#-16] munmap base
+        0x0000c8d4:0xe51b1014,  # LDR r1,[fp,#-20] munmap length
+    },
+}
+
+
+def exact_static_abi_forwarding(
+    words:tuple[int,...], start:int, name:str
+)->dict:
+    """Same-version ARM instruction witnesses; no runtime bytes inferred."""
+    expected=FORWARDING_OPCODES.get(name)
+    if not expected:
+        raise ValueError("Unknown native OSIF memory ABI routine")
+    for pc,opcode in expected.items():
+        index=(pc-start)//4
+        if (pc<start or (pc-start)%4 or index>=len(words) or
+            words[index]!=opcode):
+            raise ValueError(f"Changed OSIF ARM ABI register transfer {pc:#x}")
+    return {
+        "function":name,
+        "observed_static_argument_forwarding":True,
+        "opcodes":{f"0x{pc:08x}":f"0x{v:08x}"
+                   for pc,v in expected.items()},
+        "length_from_caller_r1_to_mmap_r1":
+            name=="sysmmap_osif_alloc",
+        "length_from_caller_r1_to_munmap_r1":
+            name=="sysmmap_osif_free",
+        "length_value_bytes_measured":False,
+        "runtime_syscall_succeeded":False,
+        "intervening_alias_or_thread_race_excluded":False,
+        "safe_dma_buffer_lifetime_verified":False,
+    }
+
+
 def inspect(root:Path)->dict:
     path=provider.find_provider(root,provider.LIBRARY)
     image=path.read_bytes()
@@ -161,6 +209,8 @@ def inspect(root:Path)->dict:
                 name:argument_context(words,start,site)
                 for name,site in sorted(actual.items())
             },
+            "static_aapcs_transfer":exact_static_abi_forwarding(
+                words,start,name),
             "real_camera_os_call_execution_verified":False,
             "real_memory_region_validity_verified":False,
         }
