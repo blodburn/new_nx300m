@@ -45,6 +45,30 @@ FW114_MM_PHOTO_INIT_MODULE_SUMMARY fw115 ...
 The actual upstream modules and callsites must come from these logs;
 do not assume that the camera app is the caller before checking.
 
+## Native CI result — confirmed two camera-app entry paths
+
+The actual FW1.14 / FW1.15 native CI (not a host mock) resolves
+`mm_photo_init()` as an imported `_Z13mm_photo_initv` symbol in
+`di-camera-app`. The same target is defined in `libmm-photo.so`.
+
+| Native module / direct ARM BL | FW1.14 | FW1.15 |
+|---|---|---|
+| `di-camera-app` `R_ARM_JUMP_SLOT` | `0x002a01f0` | `0x00298880` |
+| `UI_Operate_Camera_HW_init(bool)` | `0x001f38c0` | `0x001aca80` |
+| `UI_Manage_App_Relaunch(eUI_STATE, bool)` | `0x00185bc0` | `0x001cd128` |
+| `di-camera-app` scanned ARM functions | 3,659 | 3,660 |
+| `libmm-photo.so` scanned ARM functions | 1,233 | 1,233 |
+
+Both UI functions have a direct ARM `BL` edge through the imported
+`mm_photo_init()` PLT. These are distinct **code paths** for hardware
+initialization and app relaunch; actual camera boot/relaunch event order,
+number of invocations and success codes remain **unobserved**.
+
+The CI now rejects an unexpected change in symbol ownership, PLT slot,
+caller identity, caller address, or edge classification. The firmware
+archives are unauthenticated third-party sources: do not assume the
+same addresses apply to a different build.
+
 ## Safety and remaining verification
 
 - The firmware mirrors are unofficial and not manufacturer authenticated.
