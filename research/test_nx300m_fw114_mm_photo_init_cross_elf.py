@@ -31,30 +31,26 @@ class NativePhotoInitCallerTests(unittest.TestCase):
         self.assertTrue(found[0]["undefined"])
         self.assertFalse(found[1]["undefined"])
 
-    def test_direct_edges_require_exact_kind_and_name(self):
-        items = {
-            "identified_calls_truncated": False,
-            "identified_callsite_evidence": [
-                {"callsite": "0x00005500", "target_kind": "local",
-                 "target_symbol": "mm_photo_init()"},
-                {"callsite": "0x00005504", "target_kind": "import",
-                 "target_symbol": "_Z13mm_photo_initv"},
-                {"callsite": "0x00005508", "target_kind": "import",
-                 "target_symbol": "_Z13mm_photo_initv_extra"},
-                {"callsite": "0x0000550c", "target_kind": "local",
-                 "target_symbol": "_Z13mm_photo_initv"},
-            ],
-        }
-        actual = x.direct_edges(items)
-        self.assertEqual([q["edge_class"] for q in actual],
-                         ["ARM_BL_LOCAL", "ARM_BL_PLT_IMPORT"])
-        self.assertTrue(all(not q["runtime_binding_verified"]
-                            for q in actual))
-        with self.assertRaisesRegex(ValueError, "Truncated"):
-            x.direct_edges({"identified_calls_truncated": True,
-                            "identified_callsite_evidence": []})
-        with self.assertRaisesRegex(ValueError, "Invalid"):
-            x.direct_edges({})
+    def test_targeted_bl_requires_exact_local_or_plt_slot(self):
+        calls = [(0x5500,0x1200), (0x5504,0x4400),
+                 (0x5508,0x7000), (0x550c,0x1400)]
+        local={0x1200:"mm_photo_init()",
+               0x1400:"mm_photo_init_extra()"}
+        def resolve(target):
+            if target == 0x4400:
+                return 0x67648
+            if target == 0x7000:
+                return 0x67644
+            raise ValueError("No ARM PLT import at target")
+        found=x.targeted_bl_edges(calls,local,{0x67648},resolve)
+        self.assertEqual([q["edge_class"] for q in found],
+                         ["ARM_BL_LOCAL","ARM_BL_PLT_IMPORT"])
+        self.assertEqual([q["callsite"] for q in found],
+                         ["0x00005500","0x00005504"])
+        self.assertTrue(all(not q["runtime_binding_verified"] for q in found))
+        self.assertEqual(x.targeted_bl_edges([],local,{0x67648},resolve),[])
+        with self.assertRaisesRegex(ValueError,"Unbounded"):
+            x.targeted_bl_edges([(0,0)]*8193,local,{0x67648},resolve)
 
     def test_bounded_function_inventory_and_aliases(self):
         rows = (
