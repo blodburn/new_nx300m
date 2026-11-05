@@ -79,6 +79,20 @@ versions; a changed native target or callsite fails closed.
 underlying device mmap/ioctl operations. Analyze read-only ARM bytes
 and operator/lifetime semantics before considering a native image hook.
 
+## Next static segment-provider audit
+
+The additional actual ARM call edges in PR #41 reach
+`sysmmap_segment_alloc`, `sysmmap_segment_free`,
+`sysmmap_segment_init` and `sysmmap_segment_destroy`. The native
+auditor now includes these exact exported ELF functions, if present,
+and reports their direct ARM BL/PLT callees. This is intended to identify
+whether the local segment implementation calls OS `mmap/munmap`,
+`ioctl`, other helpers, or indirect register branches.
+
+Any inferred kernel mapping length remains UNKNOWN unless an
+independently observed descriptor and valid return size are available.
+The analysis is read-only and does not run on the physical camera.
+
 ## Release gates
 
 1. Confirm actual mapping request/return size at an authorized, read-only
