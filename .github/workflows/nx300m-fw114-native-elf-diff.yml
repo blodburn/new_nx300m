@@ -999,6 +999,44 @@ jobs:
                             "relocations",entry["exact_relocations"],
                             "scanned",entry["examined_arm_methods"],
                             "calls",entry["arm_direct_call_candidates"])
+              expected_calls={
+                  "fw114":{
+                      "got":"0x002a01f0",
+                      "UI_Operate_Camera_HW_init(bool)":"0x001f38c0",
+                      "UI_Manage_App_Relaunch(eUI_STATE, bool)":"0x00185bc0",
+                  },
+                  "fw115":{
+                      "got":"0x00298880",
+                      "UI_Operate_Camera_HW_init(bool)":"0x001aca80",
+                      "UI_Manage_App_Relaunch(eUI_STATE, bool)":"0x001cd128",
+                  },
+              }
+              spec=expected_calls[fw]
+              app=v["modules"].get("di-camera-app")
+              photo=v["modules"].get("libmm-photo.so")
+              if (not app or not photo or
+                  app["examined_arm_methods"]<3000 or
+                  photo["examined_arm_methods"]<1000 or
+                  len(app["exact_relocations"])!=1 or
+                  app["exact_relocations"][0]["slot"]!=spec["got"] or
+                  app["exact_relocations"][0]["type"]!="R_ARM_JUMP_SLOT" or
+                  len(app["exact_native_symbol_rows"])!=1 or
+                  not app["exact_native_symbol_rows"][0]["undefined"] or
+                  len(photo["exact_native_symbol_rows"])!=1 or
+                  photo["exact_native_symbol_rows"][0]["undefined"] or
+                  photo["arm_direct_call_candidates"]):
+                  raise SystemExit("REJECT actual camera app↔mm_photo_init linkage")
+              actual={item["caller"]:item["callsite"]
+                      for item in app["arm_direct_call_candidates"]}
+              wanted={name:pc for name,pc in spec.items() if name!="got"}
+              if (actual!=wanted or
+                  len(app["arm_direct_call_candidates"])!=2 or
+                  any(item["edge_class"]!="ARM_BL_PLT_IMPORT" for item in
+                      app["arm_direct_call_candidates"])):
+                  raise SystemExit("REJECT FW114/115 two UI initialization calls")
+              print("PASS_FW114_UI_INIT_MM_PHOTO_NATIVE_CALLERS",fw,
+                    actual,"JUMP_SLOT",spec["got"],
+                    "NO_LIVE_BOOT_OR_DMA_PROOF")
               print("FW114_MM_PHOTO_INIT_MODULE_SUMMARY",fw,
                     "selected",v["selected_modules"],
                     "related",v["mm_photo_init_related_modules"])
