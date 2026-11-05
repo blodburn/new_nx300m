@@ -35,6 +35,8 @@ on:
       - 'research/test_nx300m_fw114_listener_got_consumer_audit.py'
       - 'research/nx300m_fw114_listener_registration_callers.py'
       - 'research/test_nx300m_fw114_listener_registration_callers.py'
+      - 'research/nx300m_fw114_listener_cross_elf_imports.py'
+      - 'research/test_nx300m_fw114_listener_cross_elf_imports.py'
       - 'research/test_nx300m_fw114_capture_jpeg_route.py'
       - 'research/test_nx300m_fw114_function_proofs.py'
       - 'research/test_nx300m_fw114_native_elf_diff.py'
@@ -74,6 +76,8 @@ on:
       - 'research/test_nx300m_fw114_listener_got_consumer_audit.py'
       - 'research/nx300m_fw114_listener_registration_callers.py'
       - 'research/test_nx300m_fw114_listener_registration_callers.py'
+      - 'research/nx300m_fw114_listener_cross_elf_imports.py'
+      - 'research/test_nx300m_fw114_listener_cross_elf_imports.py'
       - 'research/test_nx300m_fw114_capture_jpeg_route.py'
       - 'research/test_nx300m_fw114_function_proofs.py'
       - 'research/test_nx300m_fw114_native_elf_diff.py'
@@ -113,6 +117,7 @@ jobs:
           python3 research/test_nx300m_fw114_listener_callback_registration.py
           python3 research/test_nx300m_fw114_listener_got_consumer_audit.py
           python3 research/test_nx300m_fw114_listener_registration_callers.py
+          python3 research/test_nx300m_fw114_listener_cross_elf_imports.py
           python3 research/test_nx300m_fw114_binary_delta.py
 
       - name: Install pinned offline UBI reader in ephemeral venv
@@ -907,6 +912,35 @@ jobs:
                     "memorymap_symbols",x["memory_map_named_symbols"])
           print("PASS FW114/115 exact ARM registration reverse BL scan; "
                 "no real-camera callback timing or DMA ownership proof")
+          ext=report["fw114_listener_external_elf_refs"]
+          if (not ext["both_photo_libraries_scanned"] or
+              ext["on_camera_memory_pool_listener_timing_verified"] or
+              ext["firmware_flash_permitted"]):
+              raise SystemExit("REJECT FW114 cross-ELF module scan")
+          for fw in ("fw114","fw115"):
+              e=ext[fw]
+              if (e["selected_module_count"]<1 or
+                  e["selected_module_count"]!=len(e["modules"]) or
+                  "libmm-photo.so" not in e["selected_names"] or
+                  e["all_possible_plugin_and_dlsym_callers_scanned"] or
+                  e["runtime_dlopen_or_callback_execution_proven"] or
+                  e["actual_camera_dma_or_buffer_lifetime_verified"] or
+                  e["physical_firmware_flash_permitted"]):
+                  raise SystemExit("REJECT FW114 unsupported cross-ELF claim")
+              print("FW114_CROSS_ELF_REGISTRATION_REFS",fw,
+                    "examined",e["selected_names"],
+                    "exact_symbol_modules",e["modules_with_exact_registration_symbol"])
+              for name,m in e["modules"].items():
+                  if (m["module_loaded_on_live_camera_verified"] or
+                      m["runtime_registration_invocation_proven"]):
+                      raise SystemExit("REJECT false native module execution")
+                  if (m["defined_or_undefined_symbols"] or
+                      m["native_exact_symbol_relocations"]):
+                      print("FW114_CROSS_ELF_REGISTRATION_MODULE",fw,name,
+                            "symbols",m["defined_or_undefined_symbols"],
+                            "relocations",m["native_exact_symbol_relocations"])
+          print("PASS FW114/115 read-only selected ARM cross-ELF registration "
+                "refs; live callback timing and DMA lifetime UNPROVEN")
           print('PASS native ELF FW114/115 file-hash and sampled-symbol delta report')
           PY
 
