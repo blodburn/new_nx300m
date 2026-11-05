@@ -54,6 +54,28 @@ callsite PCs must come from the following real FW CI run, not guesses.
 A PLT reference alone does not prove the live loader bound it to the
 expected local function, nor that the camera executes any caller.
 
+## Actual FW1.14 + FW1.15 native result (PR #38)
+
+Native runner output confirms precisely one **ARM BL through the PLT**
+to the registration symbol in each version:
+
+| Evidence | Both firmware versions |
+|---|---|
+| Caller | `mm_photo_init()` |
+| Caller function | `0x00055114` (32 bytes) |
+| ARM BL address | `0x0005511c` |
+| Linkage class | `ARM_BL_TO_PLT_IMPORT` |
+| Relocation | `R_ARM_JUMP_SLOT` `0x00067648` |
+| Target symbol | `_Z24RegisterMemoryMapListnerv` |
+
+This code flow is part of the named photo initialization function,
+**not evidence of per-shutter registration**. Whether the camera
+calls `mm_photo_init()` once or several times, whether the callback
+returns success and when an arena is freed remain unknown.
+
+The native CI now asserts the exact function name, function bounds,
+callsite and PLT resolution for both version-matched firmware inputs.
+
 ## Verification and restrictions
 
 - Synthetic tests cover missing call graph, truncated inventory,
