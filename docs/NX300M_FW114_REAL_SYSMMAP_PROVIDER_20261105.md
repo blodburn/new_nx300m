@@ -79,6 +79,51 @@ versions; a changed native target or callsite fails closed.
 underlying device mmap/ioctl operations. Analyze read-only ARM bytes
 and operator/lifetime semantics before considering a native image hook.
 
+## Next static segment-provider audit
+
+The additional actual ARM call edges in PR #41 reach
+`sysmmap_segment_alloc`, `sysmmap_segment_free`,
+`sysmmap_segment_init` and `sysmmap_segment_destroy`. The native
+auditor now includes these exact exported ELF functions, if present,
+and reports their direct ARM BL/PLT callees. This is intended to identify
+whether the local segment implementation calls OS `mmap/munmap`,
+`ioctl`, other helpers, or indirect register branches.
+
+Any inferred kernel mapping length remains UNKNOWN unless an
+independently observed descriptor and valid return size are available.
+The analysis is read-only and does not run on the physical camera.
+
+## Exact OS interface ARM callsites found (2026-11-05)
+
+Both **FW1.14 and FW1.15** third-party mirrored firmware builds
+contain identical native `libsys-mmap-manager.so` static ARM code
+reaching Linux memory interfaces:
+
+```text
+sysmmap_segment_alloc() @ 0xa114
+   └── BL 0xa344 → sysmmap_osif_alloc() @ 0xc7a0
+        ├── BL 0xc7f0 → ioctl
+        └── BL 0xc81c → mmap
+
+sysmmap_segment_free() @ 0xa828
+   ├── BL 0xa93c → sysmmap_osif_free() @ 0xc8bc
+   └── BL 0xa9e4 → sysmmap_osif_free() @ 0xc8bc
+        └── BL 0xc8d8 → munmap
+```
+
+The CI asserts all six precise ARM callsites for both firmware
+versions. This proves the **static call linkage** reaches OS mapping
+APIs. It does not prove specific execution paths (e.g. both frees per
+call), an ioctl request number, mmap arguments, a returned base,
+allocated size, frame lifetime, physical DMA synchronization or
+camera recovery.
+
+Next: reconstruct bounded `sysmmap_osif_alloc` argument registers
+before the `mmap` call and compare the requested length with
+`descriptor+4`, then obtain only independently authorized, read-only
+runtime evidence for actual allocation extent. Device flashing
+continues as **NO-GO**.
+
 ## Release gates
 
 1. Confirm actual mapping request/return size at an authorized, read-only

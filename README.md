@@ -3,6 +3,33 @@
 Experimental image-processing source for investigating **Samsung NX300M** film-look processing. **This is not installable camera firmware** and must not be flashed onto a camera.
 
 
+## Current development gates — 2026-11-05
+
+**This is an experimental Film Simulator implementation and a native ABI
+research repository, not installable NX300M firmware. Device flash: NO-GO.**
+
+| Milestone | Evidence and outcome |
+|---|---|
+| 13-look independent film pixel engine | Implemented for host-owned image data; no native camera hook |
+| 20.6MP JPEG/Exif/RAW isolation | Host and ARMv7 synthetic CI tests pass; not device proof |
+| Actual NX300M FW1.14/1.15 image pipeline | Static ARM32 ELF callsites mapped from unauthenticated mirror archives |
+| Memory map provider and OS boundary | `libsys-mmap-manager.so` → segment layer → `ioctl`, `mmap`, `munmap` static BL verified |
+| Physical 40MiB+ map size / DMA / Y/C pixels | Not measured on an authorized NX300M |
+| Native Tizen EFL integration / camera firmware | Not implemented or verified on device |
+| Exact stock firmware authentication, calibration backup, full-brick recovery | Not demonstrated |
+
+**Remaining hard gates:** verified device-specific FW1.14 identity and
+recovery, actual pool allocation length and synchronization, same-stage
+camera pixel layout, safe owned-copy integration with Samsung JPEG
+and EXIF/MakerNotes, followed by complete camera tests.
+
+New evidence: [native OS allocator/segment callgraph](docs/NX300M_FW114_REAL_SYSMMAP_PROVIDER_20261105.md).
+This section supersedes the older research-status phrasing below where
+it says FW1.14 was not yet downloaded; the project has now analyzed
+internally SLP-verified FW1.14 and FW1.15 **third-party** archives in
+an isolated GitHub Actions runner, but the image has **not** been
+manufacturer-authenticated or matched against a physical camera.
+
 ## SpektraFilm-compatible 3D LUT import (host research only)
 
 The independent [sRGB .cube -> linear RGB12 18³ converter](docs/NX300M_SPEKTRAFILM_CUBE_BRIDGE.md)

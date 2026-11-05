@@ -33,12 +33,18 @@ TARGETS = (
     "sysmmap_mgr_register_callback",
     "sysmmap_client_alloc",
     "sysmmap_client_free",
+    "sysmmap_segment_alloc",
+    "sysmmap_segment_free",
+    "sysmmap_segment_init",
+    "sysmmap_segment_destroy",
+    "sysmmap_osif_alloc",
+    "sysmmap_osif_free",
 )
 MAX_PATHS = 60000
 MAX_BYTES = 32 * 1024 * 1024
 MAX_SYMBOL_ROWS = 40000
 MAX_REFS = 48
-MAX_FUNCS = 12
+MAX_FUNCS = 20
 MAX_FUNCTION_BYTES = 32768
 EXPORT = re.compile(
     r"^\s*\d+:\s+([0-9a-fA-F]+)\s+(\d+)\s+"

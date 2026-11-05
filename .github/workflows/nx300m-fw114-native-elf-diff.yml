@@ -1145,6 +1145,36 @@ jobs:
               print("PASS_FW114_SYSMMAP_WRAPPER_TO_SEGMENT_CHAIN",fw,
                     "confirmed_sites",expected,
                     "REAL_DMA_OR_ALLOC_LENGTH_UNPROVEN")
+              os_calls={
+                  "sysmmap_segment_alloc":{
+                      ("0x0000a344","sysmmap_osif_alloc")},
+                  "sysmmap_segment_free":{
+                      ("0x0000a93c","sysmmap_osif_free"),
+                      ("0x0000a9e4","sysmmap_osif_free")},
+                  "sysmmap_osif_alloc":{
+                      ("0x0000c7f0","ioctl"),
+                      ("0x0000c81c","mmap")},
+                  "sysmmap_osif_free":{
+                      ("0x0000c8d8","munmap")},
+              }
+              os_methods={
+                  item["function"]:item for item in
+                  p["native_defined_function_arm_callgraph"]}
+              if not set(os_calls).issubset(os_methods):
+                  raise SystemExit("REJECT missing native SYSMMAP OSIF")
+              for function,expected_sites in os_calls.items():
+                  method=os_methods[function]
+                  actual_sites={
+                      (edge["callsite"],edge["target_symbol"])
+                      for edge in method["arm_direct_bl_edges"]
+                      if edge["target_kind"]=="import"
+                  }
+                  if (not expected_sites.issubset(actual_sites) or
+                      method["actual_kernel_mapping_length_proven"] or
+                      method["real_camera_function_invoked"]):
+                      raise SystemExit("REJECT native SYSMMAP OS edge drift")
+              print("PASS_FW114_SYSMMAP_OS_INTERFACE_CALLGRAPH",fw,
+                    os_calls,"ACTUAL_MMAP_LENGTH_UNKNOWN")
               print("FW114_REAL_SYSMMAP_PROVIDER",fw,
                     "SHA256",p["provider_sha256"],
                     "EXPORTED",p["mmap_exported_functions"],
