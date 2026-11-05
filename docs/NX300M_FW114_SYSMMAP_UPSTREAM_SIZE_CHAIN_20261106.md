@@ -38,6 +38,34 @@ libsys-mmap-manager.so:
                                 → munmap (r1=length)
 ```
 
+## Same-version native ARM r1 observations
+
+Private CI of actual FW1.14 and FW1.15 extracted library found the
+following same-layout **last immediately recognized r1 writer** before
+each direct ARM BL. The new code pins the exact opcode and location
+for regression detection, not full value identity.
+
+| Function passing to | ARM BL site | Last r1 writer | Meaning |
+|---|---|---|---|
+| `sysmmap_alloc → mgr_alloc` | 0x3360 | 0x3358 `MOV r1,r3` | r3 value needs tracing |
+| `sysmmap_cached_alloc → mgr_alloc` | 0x33f4 | 0x33ec `MOV r1,r3` | r3 value needs tracing |
+| `mgr_alloc → client_alloc` | 0x4620 | 0x4618 `LDR r1,[fp,-36]` | stack source |
+| `client_alloc → segment_alloc` | 0x786c | 0x7864 `LDR r1,[fp,-20]` | stack source |
+| `segment_alloc → osif_alloc` | 0xa344 | 0xa33c `MOV r1,r2` | r2 value needs tracing |
+| `sysmmap_free → mgr_free` | 0x347c | 0x3478 `LDR r1,[fp,-12]` | stack source |
+| `mgr_free → client_free` | 0x4784 | 0x4780 `LDR r1,[fp,-36]` | stack source |
+| `client_free → segment_free` | 0x7914 | 0x7910 `LDR r1,[fp,-20]` | stack source |
+| `segment_free → osif_free` | 0xa93c | 0xa938 `MOV r1,r3` | first conditional path |
+| `segment_free → osif_free` | 0xa9e4 | 0xa9e0 `MOV r1,r3` | second path |
+
+**IMPORTANT:** AAPCS uses r1 for the second argument, but no evidence
+here proves that every function's second argument always means
+**allocation size**. In particular, `segment_alloc` forwards r2
+into r1. This could represent a transformed/selected length; do not
+equate it to the incoming descriptor without full control/dataflow.
+Likewise, the existence of two free callsites does not mean both
+execute in a single invocation.
+
 ## Research limits
 
 An ARM machine-code BL callsite demonstrates that a function can call
