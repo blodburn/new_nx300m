@@ -845,6 +845,19 @@ jobs:
                   set(x["target_listener"] for x in
                       owner["actual_GOT_load_sites"])!=set(expected)):
                   raise SystemExit("REJECT FW114 callback registration owner")
+              static_args=owner["ARM_registration_argument_proof"]
+              if (not static_args["native_static_BL_and_r1_r2_pointer_transfer_proven"] or
+                  static_args["native_registration_API"]!=
+                      "sysmmap_client_callback_register" or
+                  static_args["ARM_BL_site"]!="0x00035110" or
+                  static_args["static_registration_arguments"]!=
+                      {"r1":"AllocListener","r2":"FreeListener"} or
+                  static_args["r0_live_client_handle_verified"] or
+                  static_args["real_camera_registration_executed_or_succeeded"] or
+                  static_args["live_callback_timing_or_DMA_safety_verified"] or
+                  static_args["camera_firmware_flash_permitted"]):
+                  raise SystemExit("REJECT native ARM listener AAPCS mapping")
+              print("PASS_FW114_NATIVE_REGISTER_CALLBACK_ARGS",fw,static_args)
               print("FW114_NATIVE_REGISTER_LISTENER_CALLGRAPH",fw,
                     owner["function_address"],"size",owner["function_bytes"],
                     "direct_calls",owner["native_direct_call_candidates"])
