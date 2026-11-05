@@ -1070,6 +1070,14 @@ jobs:
               a=e["listeners"]["AllocListener"]
               f=e["listeners"]["FreeListener"]
               if (a["native_descriptor_size_load"]!="0x00034e58" or
+                  a["all_descriptor_size_load_sites"]!=
+                      ["0x00034e30","0x00034e58"] or
+                  f["all_descriptor_size_load_sites"]!=
+                      ["0x00035048"] or
+                  not a["cached_and_plain_paths_use_same_descriptor_size_offset"] or
+                  not a["both_paths_join_before_CreateInstance"] or
+                  not e["cached_and_normal_allocation_use_descriptor_plus4_size"] or
+                  e["cached_allocation_returned_byte_length_verified"] or
                   f["native_descriptor_size_load"]!="0x00035048" or
                   a["actual_descriptor_size_bytes_observed"] or
                   f["actual_descriptor_size_bytes_observed"] or
