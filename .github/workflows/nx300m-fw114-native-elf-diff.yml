@@ -897,14 +897,32 @@ jobs:
                   x["image_dma_ownership_or_cache_safety_verified"] or
                   x["firmware_flash_permitted"]):
                   raise SystemExit("REJECT native registration caller overclaim")
+              if (x["registration_PLT_relocation_slot"]!="0x00067648" or
+                  x["registration_PLT_native_symbol"]!=
+                      "_Z24RegisterMemoryMapListnerv"):
+                  raise SystemExit("REJECT missing native callback PLT identity")
               for caller in x["direct_bl_callers"]:
                   if (caller["callee"]!="RegisterMemoryMapListner()" or
                       caller["callee_address"]!="0x000350d8" or
+                      caller["static_edge_class"] not in (
+                          "ARM_BL_TO_LOCAL","ARM_BL_TO_PLT_IMPORT") or
+                      caller["runtime_dynamic_linker_binding_proven"] or
                       caller["real_camera_invocation_proven"] or
                       caller["callback_registration_success_proven"] or
                       caller["runtime_callback_registration_invoked"] or
                       caller["camera_capture_event_or_thread_proven"]):
                       raise SystemExit("REJECT invalid native registration call")
+              if (x["direct_bl_caller_count"]!=1 or
+                  x["direct_bl_callers"][0]["caller"]!="mm_photo_init()" or
+                  x["direct_bl_callers"][0]["caller_address"]!="0x00055114" or
+                  x["direct_bl_callers"][0]["caller_bytes"]!=32 or
+                  x["direct_bl_callers"][0]["site"]!="0x0005511c" or
+                  x["direct_bl_callers"][0]["static_edge_class"]!=
+                      "ARM_BL_TO_PLT_IMPORT"):
+                  raise SystemExit("REJECT FW114 init→callback register PLT path")
+              print("PASS_FW114_NATIVE_MM_PHOTO_INIT_REGISTER_LISTENER",fw,
+                    "mm_photo_init→PLT→RegisterMemoryMapListner",
+                    "ON_CAMERA_EXECUTION_UNPROVEN")
               print("FW114_LISTENER_REGISTER_DIRECT_CALLERS",fw,
                     "scanned",x["examined_arm_function_count"],
                     "direct_count",x["direct_bl_caller_count"],
