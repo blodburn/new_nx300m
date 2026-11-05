@@ -45,6 +45,57 @@ MAX_METHODS = 16
 MAX_FUNCTION = 4096
 
 
+# Exact final recognizable r1 writers in the native ARM window. This
+# only verifies the immediate local argument setup; no complete dataflow
+# or actual runtime length can be inferred.
+R1_WRITER_WITNESSES = {
+    "sysmmap_alloc": {0x3360:(0x3358,0xe1a01003)},
+    "sysmmap_cached_alloc": {0x33f4:(0x33ec,0xe1a01003)},
+    "sysmmap_mgr_alloc": {0x4620:(0x4618,0xe51b1024)},
+    "sysmmap_client_alloc": {0x786c:(0x7864,0xe51b1014)},
+    "sysmmap_segment_alloc": {0xa344:(0xa33c,0xe1a01002)},
+    "sysmmap_free": {0x347c:(0x3478,0xe51b100c)},
+    "sysmmap_mgr_free": {0x4784:(0x4780,0xe51b1024)},
+    "sysmmap_client_free": {0x7914:(0x7910,0xe51b1014)},
+    "sysmmap_segment_free": {
+        0xa93c:(0xa938,0xe1a01003),
+        0xa9e4:(0xa9e0,0xe1a01003)},
+}
+
+
+def last_r1_writer_witness(
+    words:tuple[int,...],start:int,site:int,function:str
+)->dict:
+    expected=R1_WRITER_WITNESSES.get(function,{}).get(site)
+    if not expected:
+        raise ValueError("Unknown native SYSMMAP r1 witness")
+    writer_pc,opcode=expected
+    index=(writer_pc-start)//4
+    if (writer_pc<start or (writer_pc-start)%4 or
+        index>=len(words) or site<=writer_pc or
+        site-start>=len(words)*4 or words[index]!=opcode):
+        raise ValueError("Changed native SYSMMAP r1 writer at callsite")
+    decoded=osif.classify_arm_argument_writer(opcode,writer_pc,1)
+    if decoded is None or decoded["register"]!="r1":
+        raise ValueError("Native r1 witness is not an ARM r1 writer")
+    # No supported unconditional instruction after the witness writes
+    # r1 again. Other kinds of instructions and aliases remain unresolved.
+    for i in range(index+1,(site-start)//4):
+        if osif.classify_arm_argument_writer(words[i],start+4*i,1):
+            raise ValueError("Different nearby r1 writer before native BL")
+    return {
+        "writer_site":f"0x{writer_pc:08x}",
+        "writer_opcode":f"0x{opcode:08x}",
+        "writer_type":decoded["kind"],
+        "source_register":decoded.get("source_register"),
+        "value":decoded.get("value"),
+        "only_static_local_r1_writer_witness":True,
+        "unmodeled_aliases_branches_or_other_writers_excluded":False,
+        "same_length_as_listener_descriptor_proven":False,
+        "live_allocated_bytes_measured":False,
+    }
+
+
 def callsite_window(
     words:tuple[int,...],start:int,callsite:int
 ) -> dict:
@@ -103,6 +154,8 @@ def inspect(root:Path)->dict:
             "calls":[{
                 "callee":callee,
                 "site":f"0x{site:08x}",
+                "immediate_r1_writer_witness":
+                    last_r1_writer_witness(words,start,site,name),
                 **callsite_window(words,start,site)
             } for callee,sites in expected.items() for site in sites],
             "live_camera_syscall_or_callback_invoked":False,
