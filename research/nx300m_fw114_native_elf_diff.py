@@ -35,6 +35,7 @@ import nx300m_fw114_cycc_provider_probe as cycc_provider
 import nx300m_fw114_pool_slot8_writer_audit as pool_slot8
 import nx300m_fw114_pool_create_caller_audit as pool_callers
 import nx300m_fw114_listener_callback_registration as listeners
+import nx300m_fw114_listener_got_consumer_audit as listener_got
 import nx300m_fw114_arm_loader_abi as arm_loader
 import nx300m_fw114_runtime_linkage_audit as runtime_linkage
 
@@ -376,6 +377,9 @@ def analyze(archives: dict[str, Path], private_root: Path,
         listener_relocation_witnesses = listeners.compare_versions(
             route_paths["1.14"][static_route.PHOTO],
             route_paths["1.15"][static_route.PHOTO])
+        listener_got_consumers = listener_got.compare_versions(
+            route_paths["1.14"][static_route.PHOTO],
+            route_paths["1.15"][static_route.PHOTO])
         pool_destructor_proof = {
             version: cycc_provider.proof_mode2_pool_and_trivial_cycc_destructor(
                 evidence[version]["cycc_ownership_provider_symbols"],
@@ -399,6 +403,7 @@ def analyze(archives: dict[str, Path], private_root: Path,
             "fw114_pool_slot8_writer_inventory":pool_writers,
             "fw114_pool_creation_callers":pool_origins,
             "fw114_pool_listener_relocation_witnesses":listener_relocation_witnesses,
+            "fw114_pool_listener_got_consumers":listener_got_consumers,
             "cycc_pool_destructor_native_proof":pool_destructor_proof,
             "camera_flash_permitted": False,
             "camera_isp_buffer_contract_verified": False,
