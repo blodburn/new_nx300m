@@ -26,6 +26,27 @@ It does not rely on host JPEG/LUT simulation.
 Do not guess a target library, function, listener-argument mapping
 or live execution frequency from the method's name.
 
+## Verified static registration API and AAPCS arguments
+
+Read-only FW1.14 and FW1.15 native ELF CI identified the direct
+`BL sysmmap_client_callback_register` call at `0x00035110` inside
+`RegisterMemoryMapListner()` (start `0x000350d8`, 220 bytes).
+
+The exact sequential ARM instruction evidence is:
+
+| Address | ARM word | Static meaning |
+|---|---|---|
+| `0x350fc` | `e7943003` | Load `AllocListener` pointer via verified GOT slot |
+| `0x35100` | `e1a01003` | Copy pointer into AAPCS `r1` |
+| `0x35108` | `e7943003` | Load `FreeListener` pointer via verified GOT slot |
+| `0x3510c` | `e1a02003` | Copy pointer into AAPCS `r2` |
+| `0x35110` | `ebffc896` | Direct imported `sysmmap_client_callback_register` BL |
+
+The source CI now rejects any changed opcode, missing import, changed GOT
+slot, or swapped listener argument. This is **static evidence for the
+callback registration call and its argument mapping**, not runtime proof
+that registration completed or either callback executed.
+
 ## Restrictions
 
 - All firmware archives are unofficial, unauthenticated source mirrors.
