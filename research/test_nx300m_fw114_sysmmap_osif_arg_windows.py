@@ -41,6 +41,31 @@ class OSIFArgumentWindows(unittest.TestCase):
         with self.assertRaises(ValueError):
             a.argument_context(words,0x1000,0x100c,lookback=50)
 
+    def test_exact_fw_aapcs_stack_length_transfer(self):
+        for name in ("sysmmap_osif_alloc","sysmmap_osif_free"):
+            expected=a.EXPECTED[name]
+            start,size=expected["address"],expected["size"]
+            words=[0xe1a00000]*(size//4)
+            for pc,opcode in a.FORWARDING_OPCODES[name].items():
+                words[(pc-start)//4]=opcode
+            evidence=a.exact_static_abi_forwarding(tuple(words),start,name)
+            self.assertTrue(evidence["observed_static_argument_forwarding"])
+            self.assertFalse(evidence["length_value_bytes_measured"])
+            self.assertFalse(evidence["runtime_syscall_succeeded"])
+            self.assertFalse(evidence["safe_dma_buffer_lifetime_verified"])
+            if name=="sysmmap_osif_alloc":
+                self.assertTrue(evidence["length_from_caller_r1_to_mmap_r1"])
+            else:
+                self.assertTrue(evidence["length_from_caller_r1_to_munmap_r1"])
+            for pc in a.FORWARDING_OPCODES[name]:
+                changed=list(words)
+                changed[(pc-start)//4]=0xe1a00000
+                with self.subTest(name=name,pc=pc),self.assertRaisesRegex(
+                    ValueError,"Changed OSIF"):
+                    a.exact_static_abi_forwarding(tuple(changed),start,name)
+        with self.assertRaises(ValueError):
+            a.exact_static_abi_forwarding((0,0),0,"not_a_camera_symbol")
+
     def test_static_os_symbol_expectations(self):
         self.assertEqual(a.EXPECTED["sysmmap_osif_alloc"]["calls"],
                          {"ioctl":0xc7f0,"mmap":0xc81c})
