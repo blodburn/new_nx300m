@@ -55,6 +55,19 @@ class NativeListenerGotLoads(unittest.TestCase):
         self.assertEqual(got.scan_words(
             data,segs,0x1000,branch,{0x6868c:"AllocListener"},"branch"),[])
 
+    def test_registration_opcode_window_bounded(self):
+        words=(0xe1a00000,0xe59f4008,0xe08f4004,0xe5943000,
+               0xe1a00000,0xe1a00000)
+        excerpt=got.bounded_arm_window(words,0x1000,0x100c,
+                                       before=2,after=1)
+        self.assertEqual([x["pc"] for x in excerpt],
+                         ["0x00001004","0x00001008",
+                          "0x0000100c","0x00001010"])
+        with self.assertRaisesRegex(ValueError,"Invalid bounded"):
+            got.bounded_arm_window(words,0x1000,0x1002)
+        with self.assertRaisesRegex(ValueError,"Invalid bounded"):
+            got.bounded_arm_window(words,0x1000,0x100c,before=100)
+
     def test_malformed_instruction_and_input_rejected(self):
         self.assertEqual(got.arm_register_ldr(0xe5943000),None)
         self.assertEqual(got.arm_data_processing(0xe59f4008),None)
