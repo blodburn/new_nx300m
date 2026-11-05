@@ -29,10 +29,30 @@ class RegistrationCallers(unittest.TestCase):
         self.assertEqual(auditor.direct_target_sites(candidates),
                          [{"callsite":"0x00001008",
                            "target_kind":"local",
-                           "target_symbol":"RegisterMemoryMapListner()"}])
+                           "target_symbol":"RegisterMemoryMapListner()",
+                           "static_edge_class":"ARM_BL_TO_LOCAL",
+                           "runtime_dynamic_linker_binding_proven":False}])
         self.assertEqual(auditor.direct_target_sites(
             {"identified_calls_truncated":False,
              "identified_callsite_evidence":[]}), [])
+
+    def test_exact_plt_relocation_edge_supported_without_runtime_claim(self):
+        refs = auditor.direct_target_sites({
+            "identified_calls_truncated":False,
+            "identified_callsite_evidence":[
+                {"callsite":"0x00004300","target_kind":"import",
+                 "target_symbol":"_Z24RegisterMemoryMapListnerv"},
+                {"callsite":"0x00004304","target_kind":"import",
+                 "target_symbol":"_Z24RegisterMemoryMapListnerv_wrong"},
+                {"callsite":"0x00004308","target_kind":"local",
+                 "target_symbol":"_Z24RegisterMemoryMapListnerv"},
+            ],
+        })
+        self.assertEqual(len(refs),1)
+        self.assertEqual(refs[0]["static_edge_class"],
+                         "ARM_BL_TO_PLT_IMPORT")
+        self.assertEqual(refs[0]["callsite"],"0x00004300")
+        self.assertFalse(refs[0]["runtime_dynamic_linker_binding_proven"])
 
     def test_reject_truncated_or_invalid_inventory(self):
         with self.assertRaisesRegex(ValueError, "Truncated"):
