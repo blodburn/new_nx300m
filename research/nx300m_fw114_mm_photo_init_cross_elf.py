@@ -49,28 +49,34 @@ def symbol_rows(table: str) -> list[dict]:
     return matches
 
 
-def direct_edges(entries: dict) -> list[dict]:
-    """Only named ARM direct BL → exact local method or PLT import."""
-    if entries.get("identified_calls_truncated"):
-        raise ValueError("Truncated native ARM call inventory")
-    candidates = entries.get("identified_callsite_evidence")
-    if not isinstance(candidates, list):
-        raise ValueError("Invalid native caller evidence")
-    matches = []
-    for candidate in candidates:
-        local = (candidate.get("target_kind") == "local" and
-                 candidate.get("target_symbol") == TARGET)
-        imported = (candidate.get("target_kind") == "import" and
-                    candidate.get("target_symbol") == NATIVE_SYMBOL)
-        if local or imported:
-            matches.append({
-                "callsite": candidate["callsite"],
-                "target_symbol": candidate["target_symbol"],
-                "edge_class": ("ARM_BL_LOCAL" if local else
+def targeted_bl_edges(call_sites: list[tuple[int, int]],
+                      defined: dict[int, str], target_plt_slots: set[int],
+                      resolve_plt) -> list[dict]:
+    """Classify *all* direct BLs without unrelated callgraph truncation.
+
+    Only a precisely defined native function or a relocation-backed PLT
+    slot counts. Missing PLT mappings do not prove that a call is absent.
+    """
+    if len(call_sites) > 8192 or len(target_plt_slots) > MAX_RELOCS:
+        raise ValueError("Unbounded ARM direct BL candidate list")
+    result = []
+    for site, target in call_sites:
+        is_local = defined.get(target) == TARGET
+        is_import = False
+        if not is_local and target_plt_slots:
+            try:
+                is_import = resolve_plt(target) in target_plt_slots
+            except ValueError:
+                pass
+        if is_local or is_import:
+            result.append({
+                "callsite": f"0x{site:08x}",
+                "target_symbol": TARGET if is_local else NATIVE_SYMBOL,
+                "edge_class": ("ARM_BL_LOCAL" if is_local else
                                "ARM_BL_PLT_IMPORT"),
                 "runtime_binding_verified": False,
             })
-    return matches
+    return result
 
 
 def method_inventory(table: str) -> list[tuple[int, int]]:
@@ -112,9 +118,10 @@ def inspect_one(path: Path) -> dict:
         data = path.read_bytes()
         segments = elf.program_headers(path)
         defined = graph.defined_symbols(path)
-        native_imports = jpeg.relocations(rt) if plt else {}
-        # An imported PLT relocation alone cannot establish the executable
-        # callsite. Resolve the actual ARM direct BL for each method.
+        target_plt_slots = {int(x["slot"], 16) for x in plt}
+        # An imported PLT relocation alone cannot establish a caller.
+        # Scan all direct BLs for only the target relocation, rather than
+        # collecting/truncating a broad list of unrelated function calls.
         for address, size in method_inventory(table):
             try:
                 offset = elf.file_range_for_vaddr(segments, address, size)
@@ -122,11 +129,13 @@ def inspect_one(path: Path) -> dict:
                 continue
             if offset + size > len(data):
                 raise ValueError("Truncated file-backed native ARM function")
-            links = graph.collect_edges(
-                data, segments, address, size, defined, native_imports
+            arms = sif.arm.scan_direct_calls(data, address, size, segments)
+            exact_edges = targeted_bl_edges(
+                arms, defined, target_plt_slots,
+                lambda address: jpeg.plt_got(data, segments, address)
             )
             examined += 1
-            for edge in direct_edges(links):
+            for edge in exact_edges:
                 callsites.append({
                     "caller": defined.get(address, "UNKNOWN_DEFINED_FUNC"),
                     "caller_address": f"0x{address:08x}",
