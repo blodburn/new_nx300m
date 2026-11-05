@@ -55,8 +55,9 @@ def classify_arm_argument_writer(word:int, address:int, reg:int)->dict|None:
             "proves_arg_value":False,
         }
     # ARM data-processing immediate / simple register MOV or ADD.
-    if ((word>>26)&3)==0 and not ((word>>20)&1) and (
-        (word>>12)&15)==reg):
+    if (((word >> 26) & 3) == 0 and
+        not ((word >> 20) & 1) and
+        ((word >> 12) & 15) == reg):
         opcode=(word>>21)&15
         if opcode not in (4,13):
             return None
