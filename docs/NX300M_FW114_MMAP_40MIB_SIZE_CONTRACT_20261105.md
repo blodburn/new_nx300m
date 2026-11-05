@@ -6,8 +6,14 @@
 
 ```text
 AllocListener(callback descriptor)
-  descriptor + 4 @ ARM 0x34e58    -> sysmmap_alloc length r0 @ 0x34e64
-  descriptor + 12 @ ARM 0x34e60   -> sysmmap_alloc mode r1 @ 0x34e68
+  strcmp result @ 0x34e24 -> BNE @ 0x34e28 -> plain branch
+  cached: descriptor +4 @ ARM 0x34e30 -> cached_alloc length r0 @ 0x34e3c
+  cached: descriptor +12 @ 0x34e38   -> cached_alloc mode r1 @ 0x34e40
+  cached: BL sysmmap_cached_alloc @ 0x34e44
+  cached: B @ 0x34e50 -> common pool instance block @ 0x34e78
+  plain: descriptor +4 @ ARM 0x34e58 -> sysmmap_alloc length r0 @ 0x34e64
+  plain: descriptor +12 @ 0x34e60  -> sysmmap_alloc mode r1 @ 0x34e68
+  plain: BL sysmmap_alloc @ 0x34e6c
   sysmmap_alloc() -> CMemoryPool::CreateInstance(base)
 
 CMemoryPool constructor @ 0x351b4
