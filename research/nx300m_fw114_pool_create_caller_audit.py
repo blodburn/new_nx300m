@@ -19,10 +19,20 @@ import nx300m_native_jpeg_abi_boundary_audit as jpeg
 MAX_ELF=2*1024*1024
 MAX_METHODS=4000
 MAX_FUNC=32768
-MAX_MATCHES=32
+MAX_MATCHES=64
 FOCUS=("CMemoryPool::CreateInstance(","CMemoryPool::Destory(",
        "CMemoryPool::GetInstance(","CMemoryPool::GetAddr(",
        "CMemoryPool::CMemoryPool(")
+
+
+def is_pool_lifecycle_call(target:str)->bool:
+    """Only creation and destruction; exclude hot-path GetAddr/GetInstance."""
+    return (
+        "CMemoryPool::CreateInstance(" in target or
+        "_ZN11CMemoryPool14CreateInstance" in target or
+        "CMemoryPool::Destory(" in target or
+        "_ZN11CMemoryPool7Destory" in target
+    )
 
 
 def caller_context(words:tuple[int,...],start:int,site:int)->dict:
@@ -74,7 +84,7 @@ def inspect(path:Path)->dict:
         examined+=1
         for e in edges["identified_callsite_evidence"]:
             target=e["target_symbol"]
-            if not ("CMemoryPool::" in target or "_ZN11CMemoryPool" in target):
+            if not is_pool_lifecycle_call(target):
                 continue
             site=int(e["callsite"],16)
             words=struct.unpack_from("<"+"I"*(size//4),data,off)
