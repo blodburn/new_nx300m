@@ -642,6 +642,25 @@ jobs:
                         window["arm_words"])
           print("PASS FW1.14/1.15 photo conditional pool/resize/destructor "
                 "static branch evidence; no camera DMA lifetime proof")
+          proofs=report["cycc_pool_destructor_native_proof"]
+          for fwversion in ("1.14","1.15"):
+              evidence=proofs[fwversion]
+              if (not evidence["getter_type_1_conditional_memorypool_resize_branch"]
+                  or not evidence["memorypool_GetAddr_enum_2_reads_pool_object_offset8"]
+                  or not evidence["CYcc_destructor_has_no_direct_free_or_calls"]
+                  or not evidence["CYcc_destructor_writes_only_its_own_stack_frame"]
+                  or evidence["pointer_held_in_pool_slot_has_ownership_or_refcount_proof"]
+                  or evidence["pool_slot_overwrite_or_reuse_interval_verified"]
+                  or evidence["pixel_YCC_input_DMA_coherency_or_lifetime_proven"]
+                  or evidence["safe_film_engine_hook_permitted"]
+                  or evidence["firmware_flash_permitted"]):
+                  raise SystemExit(
+                      "REJECT actual FW114/115 native pool/destructor byte evidence")
+              print("FW114_NATIVE_YCC_POOL_MODE2_AND_TRIVIAL_DTOR",fwversion,
+                    "type1_resizes",True,
+                    "memorypool_member_offset8",True,
+                    "destructor_no_BL_free",True,
+                    "hardware_pool_reuse_unknown",True)
           for v in ("fw114","fw115"):
               providers=report[v]["cycc_ownership_provider_symbols"]
               if (providers["live_symbol_resolution_proven"] or
