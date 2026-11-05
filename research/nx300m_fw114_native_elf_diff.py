@@ -37,6 +37,7 @@ import nx300m_fw114_pool_create_caller_audit as pool_callers
 import nx300m_fw114_listener_callback_registration as listeners
 import nx300m_fw114_listener_got_consumer_audit as listener_got
 import nx300m_fw114_listener_registration_callers as registration_callers
+import nx300m_fw114_listener_cross_elf_imports as listener_external
 import nx300m_fw114_arm_loader_abi as arm_loader
 import nx300m_fw114_runtime_linkage_audit as runtime_linkage
 
@@ -331,6 +332,7 @@ def analyze(archives: dict[str, Path], private_root: Path,
         private = Path(t)
         inventories = {}
         route_paths = {}
+        extracted_roots = {}
         for version in ("1.14", "1.15"):
             source = archives[version]
             if source.is_symlink() or not source.is_file():
@@ -343,6 +345,7 @@ def analyze(archives: dict[str, Path], private_root: Path,
             s["cycc_ownership_provider_symbols"] = cycc_provider.inspect(root)
             s["offline_runtime_linkage"] = runtime_linkage.audit(root)
             route_paths[version] = select_route_elves(root)
+            extracted_roots[version] = root
             inventories[version] = s["native_elfs"]
             evidence[version] = s
         result = compare_inventory(inventories["1.14"], inventories["1.15"])
@@ -384,6 +387,8 @@ def analyze(archives: dict[str, Path], private_root: Path,
         registration_callsite_witnesses = registration_callers.compare_versions(
             route_paths["1.14"][static_route.PHOTO],
             route_paths["1.15"][static_route.PHOTO])
+        external_listener_references = listener_external.compare_versions(
+            extracted_roots["1.14"], extracted_roots["1.15"])
         pool_destructor_proof = {
             version: cycc_provider.proof_mode2_pool_and_trivial_cycc_destructor(
                 evidence[version]["cycc_ownership_provider_symbols"],
@@ -409,6 +414,7 @@ def analyze(archives: dict[str, Path], private_root: Path,
             "fw114_pool_listener_relocation_witnesses":listener_relocation_witnesses,
             "fw114_pool_listener_got_consumers":listener_got_consumers,
             "fw114_registration_reverse_direct_bl":registration_callsite_witnesses,
+            "fw114_listener_external_elf_refs":external_listener_references,
             "cycc_pool_destructor_native_proof":pool_destructor_proof,
             "camera_flash_permitted": False,
             "camera_isp_buffer_contract_verified": False,
