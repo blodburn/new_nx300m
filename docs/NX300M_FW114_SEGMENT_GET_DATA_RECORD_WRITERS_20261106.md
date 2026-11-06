@@ -50,6 +50,45 @@ object later returned by `get_data` is **not proven**.
 The other observed `STR [reg,#12]` matches use r13 (stack pointer)
 and do not identify an equivalent segment-data record write.
 
+## Correction: the empty reset writes a different relative offset
+
+FW1.14/1.15 native `sysmmap_segment_get_mempool_data()` at
+`0x9A94` calls `sysmmap_segment_get_data()` at `0x9AC4`
+and, for a non-null return, executes:
+
+```text
+0x9AD8  LDR r3,[fp,#-12]     ; get_data return
+0x9ADC  ADD r3,r3,#4         ; mempool helper return = get_data +4
+0x9AE0  STR r3,[fp,#-8]
+0x9AE8  MOV r0,r3            ; return mempool helper pointer
+```
+
+The empty-segment function uses this helper at `0xB128`,
+then stores zero at `[returned_pointer +12]` (`0xB19C`):
+
+```text
+get_data(x) -> pointer P
+    |-- allocation length source:   *(P +12) << 10   (0xA32C)
+    +-- mempool helper return:       P +4             (0x9ADC)
+           +-- empty reset store:    *(P +4 +12)=0    (0xB19C)
+                                               = P+16
+```
+
+Thus, **if** these calls received the same input and returned the
+same base pointer P, the two instructions still address **different**
+fields: `P+12` versus `P+16`. Their inputs and runtime object
+identities are not proven identical, so no runtime alias or allocation
+size assertion follows. The `+12=0` observation from the prior
+iteration is **not** a discovered positive allocation-size initializer.
+The `0x65` status marker at `B1A8` is an adjacent field write of
+the empty-segment path, not a proof of frame buffer state.
+
+The added fail-closed native verifier pins the exact
+`get_mempool_data` ARM opcodes and the two PLT-linked call edges
+`get_mempool_data → get_data` and
+`update_empty_seg → get_mempool_data` in **both** offline FW builds.
+The allocation size record's positive writer is still unlocated.
+
 ## Mapping-length relationship from previous research
 
 ```text
