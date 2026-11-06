@@ -36,6 +36,7 @@ test: multimodel-test
 	@python3 research/test_nx300m_fw114_sysmmap_osif_arg_windows.py
 	@python3 research/test_nx300m_fw114_sysmmap_upstream_size_chain.py
 	@python3 research/test_nx300m_fw114_segment_record_size_proof.py
+	@python3 research/test_nx300m_fw114_segment_get_data_writers.py
 	@python3 research/test_nx300m_fw114_pool_create_caller_audit.py
 	@python3 research/test_nx300m_fw114_listener_callback_registration.py
 	@python3 research/test_nx300m_fw114_listener_got_consumer_audit.py

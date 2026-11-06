@@ -37,6 +37,8 @@ on:
       - 'research/test_nx300m_fw114_sysmmap_upstream_size_chain.py'
       - 'research/nx300m_fw114_segment_record_size_proof.py'
       - 'research/test_nx300m_fw114_segment_record_size_proof.py'
+      - 'research/nx300m_fw114_segment_get_data_writers.py'
+      - 'research/test_nx300m_fw114_segment_get_data_writers.py'
       - 'research/nx300m_fw114_pool_create_caller_audit.py'
       - 'research/test_nx300m_fw114_pool_create_caller_audit.py'
       - 'research/nx300m_fw114_listener_callback_registration.py'
@@ -90,6 +92,8 @@ on:
       - 'research/test_nx300m_fw114_sysmmap_upstream_size_chain.py'
       - 'research/nx300m_fw114_segment_record_size_proof.py'
       - 'research/test_nx300m_fw114_segment_record_size_proof.py'
+      - 'research/nx300m_fw114_segment_get_data_writers.py'
+      - 'research/test_nx300m_fw114_segment_get_data_writers.py'
       - 'research/nx300m_fw114_pool_create_caller_audit.py'
       - 'research/test_nx300m_fw114_pool_create_caller_audit.py'
       - 'research/nx300m_fw114_listener_callback_registration.py'
@@ -142,6 +146,7 @@ jobs:
           python3 research/test_nx300m_fw114_sysmmap_osif_arg_windows.py
           python3 research/test_nx300m_fw114_sysmmap_upstream_size_chain.py
           python3 research/test_nx300m_fw114_segment_record_size_proof.py
+          python3 research/test_nx300m_fw114_segment_get_data_writers.py
           python3 research/test_nx300m_fw114_pool_create_caller_audit.py
           python3 research/test_nx300m_fw114_listener_callback_registration.py
           python3 research/test_nx300m_fw114_listener_got_consumer_audit.py
@@ -1324,6 +1329,112 @@ jobs:
                     "ACTUAL_SIZE_UNKNOWN")
           print("PASS FW1.14/1.15 native segment record+12 shift10"
                 "→OSIF mmap r1; live allocation/DMA safety UNVERIFIED")
+          writers=report["fw114_segment_record_plus12_writers"]
+          if (not writers["same_provider_bytes"] or
+              not writers["same_accessor_body"] or
+              not writers["same_mempool_helper_body"] or
+              not writers["same_pointer_offsets"] or
+              not writers["same_candidate_writers"] or
+              writers["proves_actual_camera_mmap_length"] or
+              writers["camera_flash_permitted"]):
+              raise SystemExit("REJECT native SYSMMAP segment record source mismatch")
+          for fw in ("fw114","fw115"):
+              p=writers[fw]
+              accessor=p["accessor"]
+              if (accessor["symbol"]!="sysmmap_segment_get_data" or
+                  p["record_identity_proven"] or
+                  p["record_plus12_initialization_proven"] or
+                  p["record_plus12_live_value_known"] or
+                  p["descriptor_plus4_equivalence_proven"] or
+                  p["physical_camera_memory_extent_verified"] or
+                  p["camera_flash_permitted"]):
+                  raise SystemExit("REJECT native segment writer unsupported proof")
+              proof=accessor["accessor_pointer_static_proof"]
+              if (proof["get_data_start"]!="0x00009ed4" or
+                  proof["non_null_arm_pointer_dereference"]!=
+                    "r0_return = *( *(input_r0 + 0) + 4 )" or
+                  proof["native_input_pointer_ownership_proven"] or
+                  proof["record_plus12_writer_alias_proven"] or
+                  proof["actual_camera_mapped_bytes_proven"]):
+                  raise SystemExit("REJECT native record get_data pointer proof")
+              writer=[f for f in p["segment_functions_examined"]
+                      if f["symbol"]=="sysmmap_segment_update_empty_seg"]
+              if len(writer)!=1:
+                  raise SystemExit("REJECT missing segment record+12 writer")
+              w=writer[0]["record_plus12_candidate_writer_context"]
+              if (not w or w["site"]!="0x0000b19c" or
+                  w["opcode"]!="0xe583200c" or
+                  w["record_return_alias_to_writer_r3_proven"] or
+                  w["stored_r2_runtime_value_observed"] or
+                  w["write_always_executed_proven"]):
+                  raise SystemExit("REJECT native get_data record+12 store")
+              reset=w["exact_empty_record_zero_reset"]
+              if (reset["zero_store_site"]!="0x0000b19c" or
+                  reset["status_marker_site"]!="0x0000b1a8" or
+                  reset["status_marker_byte"]!=101 or
+                  not reset["writes_zero_to_indicated_pointer_plus12"] or
+                  reset["destination_aliases_size_record_returned_by_get_data"] or
+                  reset["real_positive_allocation_size_initializer_found"] or
+                  reset["runtime_buffer_size_or_dma_safety_verified"]):
+                  raise SystemExit("REJECT native empty segment reset dataflow")
+              print("FW114_SYSMMAP_EMPTY_RECORD_RESET",fw,reset,
+                    "writer_import_calls",writer[0]["writer_function_imported_arm_calls"])
+              if not any(
+                  c["site"]=="0x0000b128" and
+                  c["imported_symbol"]=="sysmmap_segment_get_mempool_data"
+                  for c in writer[0]["writer_function_imported_arm_calls"]):
+                  raise SystemExit("REJECT changed mempool destination helper")
+              mempool=[f for f in p["segment_functions_examined"]
+                       if f["symbol"]=="sysmmap_segment_get_mempool_data"]
+              if len(mempool)!=1 or not mempool[0]["accessor_entry_arm_words"]:
+                  raise SystemExit("REJECT missing native mempool helper")
+              offset_proof=p["static_reset_vs_alloc_record_offset_proof"]
+              if (mempool[0]["address"]!="0x00009a94" or
+                  mempool[0]["size_bytes"]!=96 or
+                  offset_proof["get_data_bl"]!="0x00009ac4" or
+                  offset_proof["get_data_return_plus_bytes"]!=4 or
+                  offset_proof["get_data_return_plus_site"]!="0x00009adc" or
+                  offset_proof["empty_reset_store_offset_from_mempool_result"]!=12 or
+                  offset_proof["empty_reset_effective_offset_from_get_data_return"]!=16 or
+                  offset_proof["alloc_size_load_offset_from_get_data_return"]!=12 or
+                  offset_proof["same_input_effective_offsets_equal"] or
+                  offset_proof["get_data_input_identity_proven_across_allocator_and_reset"] or
+                  offset_proof["runtime_pointer_alias_or_memory_overlap_excluded"] or
+                  offset_proof["positive_size_initializer_identified"] or
+                  offset_proof["actual_size_bytes_or_dma_verified"]):
+                  raise SystemExit("REJECT FW mempool pointer +4 / record offset delta")
+              print("PASS_FW114_MEMPOOL_PLUS4_TO_EMPTY_RESET_PLUS16",fw,
+                    "get_data",offset_proof["get_data_bl"],
+                    "plus_site",offset_proof["get_data_return_plus_site"],
+                    "alloc_field",offset_proof["alloc_size_load_offset_from_get_data_return"],
+                    "empty_reset_field",offset_proof["empty_reset_effective_offset_from_get_data_return"],
+                    "SAME_INPUT_NOT_PROVEN")
+              print("FW114_SYSMMAP_MEMPOOL_HELPER_BODY",fw,
+                    mempool[0]["address"],"bytes",mempool[0]["size_bytes"],
+                    "entry",mempool[0]["accessor_entry_arm_words"],
+                    "exit",mempool[0]["accessor_exit_arm_words"],
+                    "get_data_calls",
+                    mempool[0]["direct_calls_via_plt_to_segment_get_data"])
+              print("FW114_SYSMMAP_RECORD_12_WRITER_WINDOW",fw,
+                    writer[0]["symbol"],"start",writer[0]["address"],
+                    "body_bytes",writer[0]["size_bytes"],
+                    "before",w["prior_arm_words"],
+                    "after",w["following_arm_words"],
+                    "BASE_ALIAS_TO_ACCESSOR_RETURN_NOT_PROVEN")
+              print("FW114_SYSMMAP_GET_DATA_ACCESSOR",fw,
+                    accessor["address"],"size",accessor["size_bytes"],
+                    "entry",accessor["accessor_entry_arm_words"],
+                    "exit",accessor["accessor_exit_arm_words"],
+                    "CALLER_SIDE_SOURCES_UNPROVEN")
+              print("FW114_SYSMMAP_RECORD_12_STORE_CANDIDATES",fw,
+                    p["store_offset12_candidates"],
+                    "RECORD_IDENTITY_UNPROVEN")
+              print("FW114_SYSMMAP_GET_DATA_CALLSITES",fw,
+                    [(f["symbol"],f["direct_calls_via_plt_to_segment_get_data"])
+                     for f in p["segment_functions_examined"]
+                     if f["direct_calls_via_plt_to_segment_get_data"]])
+          print("PASS native get-data body and segment record+12 candidate write inventory; "
+                "runtime size and ownership UNPROVEN")
           print('PASS native ELF FW114/115 file-hash and sampled-symbol delta report')
           PY
 
