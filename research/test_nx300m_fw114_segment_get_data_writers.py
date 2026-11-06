@@ -33,6 +33,33 @@ class SegmentGetDataWriters(unittest.TestCase):
             with self.assertRaises((TypeError,ValueError)):
                 module.arm_word_offset12(invalid)
 
+    def test_exact_accessor_pointer_and_writer_witnesses(self):
+        words=[0xe1a00000]*(module.ACCESSOR_SIZE//4)
+        for site,opcode in module.ACCESSOR_EXACT_WORDS.items():
+            words[(site-module.ACCESSOR_ADDRESS)//4]=opcode
+        p=module.accessor_static_pointer_witness(
+            tuple(words),module.ACCESSOR_ADDRESS)
+        self.assertEqual(
+            p["non_null_arm_pointer_dereference"],
+            "r0_return = *( *(input_r0 + 0) + 4 )")
+        self.assertFalse(p["record_plus12_writer_alias_proven"])
+        self.assertFalse(p["actual_camera_mapped_bytes_proven"])
+        for site in module.ACCESSOR_EXACT_WORDS:
+            changed=list(words)
+            changed[(site-module.ACCESSOR_ADDRESS)//4]=0xe1a00000
+            with self.subTest(site=site),self.assertRaises(ValueError):
+                module.accessor_static_pointer_witness(
+                    tuple(changed),module.ACCESSOR_ADDRESS)
+        writer=(0xe1a00000,module.STORED_WORD,0xe1a00000)
+        ctx=module.target_writer_context(writer,0xb198)
+        self.assertEqual(ctx["site"],"0x0000b19c")
+        self.assertFalse(ctx["record_return_alias_to_writer_r3_proven"])
+        self.assertFalse(ctx["stored_r2_runtime_value_observed"])
+        with self.assertRaises(ValueError):
+            module.target_writer_context((0,0,0),0xb198)
+        with self.assertRaises(ValueError):
+            module.target_writer_context(writer,0xb199)
+
     def test_symbol_rows_deduplicated(self):
         text="""Symbol table '.dynsym' contains 2 entries:
    4: 0000a114   796 FUNC GLOBAL DEFAULT   11 sysmmap_segment_alloc
