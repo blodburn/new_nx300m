@@ -31,6 +31,45 @@ MAX_FILE_BYTES=32*1024*1024
 MAX_REL_LINES=40000
 MAX_POINTER_REFS=64
 MAX_INDIRECT=150
+EXPECTED_DYNAMIC_RELOCATIONS={
+    ("0x0001bb14","R_ARM_GLOB_DAT"),
+    ("0x0001babc","R_ARM_JUMP_SLOT"),
+}
+EXPECTED_RAW_ADDRESS_LITERAL_VADDR="0x00001214"
+
+
+def qualified_indirect_reference_evidence(
+    relocation_lines:list[str],pointer_candidates:list[dict],
+    calls:list[dict],blx:list[dict]
+)->dict:
+    """Validate recorded ELF pointer witnesses; no runtime target claim."""
+    seen=set()
+    for line in relocation_lines:
+        terms=line.split()
+        if len(terms)<5 or terms[-1]!=TARGET:
+            raise ValueError("Invalid native Q-copier ELF relocation")
+        seen.add((f"0x{int(terms[0],16):08x}",terms[2]))
+    if seen!=EXPECTED_DYNAMIC_RELOCATIONS:
+        raise ValueError("Changed Q-copier ELF dynamic linkage")
+    exact=[p for p in pointer_candidates
+           if p["elf_vaddr"]==EXPECTED_RAW_ADDRESS_LITERAL_VADDR
+           and p["value"]=="0x0000b0e0"]
+    if len(exact)!=1:
+        raise ValueError("Missing verified FW function pointer literal")
+    return {
+        "glob_dat_site":"0x0001bb14",
+        "jump_slot_site":"0x0001babc",
+        "literal_vaddr":"0x00001214",
+        "literal_value":"0x0000b0e0",
+        "direct_arm_bl_or_plt_callsite_count":len(calls),
+        "indirect_arm_blx_site_count":len(blx),
+        "target_address_present_in_runtime_linkage":True,
+        "indirect_blx_linked_to_target_function_proven":False,
+        "runtime_copy_function_executed_proven":False,
+        "q_source_object_identity_proven":False,
+    }
+
+
 Q_ENTRY_OPCODES={
     0x0000b0f4:0xe50b0018, # STR incoming r0,[fp,#-24]
     0x0000b0f8:0xe50b101c, # STR incoming r1,[fp,#-28] source Q
@@ -250,6 +289,8 @@ def inspect(root:Path)->dict:
                 raise ValueError("Unbounded source-field copier callers")
     offset=elf.file_range_for_vaddr(loads,TARGET_START,TARGET_SIZE)
     words=struct.unpack_from("<"+"I"*(TARGET_SIZE//4),blob,offset)
+    dynamic_reference_proof=qualified_indirect_reference_evidence(
+        symbol_relocations,pointer_literals,callers,indirect_calls)
     return {
         "scope":"OFFLINE_UNAUTHENTICATED_ARM32_SOURCE_FIELD_CALLERS",
         "native_provider":provider.LIBRARY,
@@ -261,6 +302,7 @@ def inspect(root:Path)->dict:
             "opcode":f"0x{word:08x}"}
             for i,word in enumerate(words[:24])],
         "source_q_abi_proof":verify_source_q_incoming(words),
+        "dynamic_reference_proof":dynamic_reference_proof,
         "raw_function_pointer_literals":pointer_literals,
         "named_symbol_relocations":symbol_relocations,
         "sysmmap_indirect_blx_candidates":indirect_calls,
