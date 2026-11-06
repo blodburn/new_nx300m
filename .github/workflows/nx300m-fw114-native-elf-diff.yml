@@ -1332,6 +1332,8 @@ jobs:
           writers=report["fw114_segment_record_plus12_writers"]
           if (not writers["same_provider_bytes"] or
               not writers["same_accessor_body"] or
+              not writers["same_mempool_helper_body"] or
+              not writers["same_pointer_offsets"] or
               not writers["same_candidate_writers"] or
               writers["proves_actual_camera_mmap_length"] or
               writers["camera_flash_permitted"]):
@@ -1386,6 +1388,27 @@ jobs:
                        if f["symbol"]=="sysmmap_segment_get_mempool_data"]
               if len(mempool)!=1 or not mempool[0]["accessor_entry_arm_words"]:
                   raise SystemExit("REJECT missing native mempool helper")
+              offset_proof=p["static_reset_vs_alloc_record_offset_proof"]
+              if (mempool[0]["address"]!="0x00009a94" or
+                  mempool[0]["size_bytes"]!=96 or
+                  offset_proof["get_data_bl"]!="0x00009ac4" or
+                  offset_proof["get_data_return_plus_bytes"]!=4 or
+                  offset_proof["get_data_return_plus_site"]!="0x00009adc" or
+                  offset_proof["empty_reset_store_offset_from_mempool_result"]!=12 or
+                  offset_proof["empty_reset_effective_offset_from_get_data_return"]!=16 or
+                  offset_proof["alloc_size_load_offset_from_get_data_return"]!=12 or
+                  offset_proof["same_input_effective_offsets_equal"] or
+                  offset_proof["get_data_input_identity_proven_across_allocator_and_reset"] or
+                  offset_proof["runtime_pointer_alias_or_memory_overlap_excluded"] or
+                  offset_proof["positive_size_initializer_identified"] or
+                  offset_proof["actual_size_bytes_or_dma_verified"]):
+                  raise SystemExit("REJECT FW mempool pointer +4 / record offset delta")
+              print("PASS_FW114_MEMPOOL_PLUS4_TO_EMPTY_RESET_PLUS16",fw,
+                    "get_data",offset_proof["get_data_bl"],
+                    "plus_site",offset_proof["get_data_return_plus_site"],
+                    "alloc_field",offset_proof["alloc_size_load_offset_from_get_data_return"],
+                    "empty_reset_field",offset_proof["empty_reset_effective_offset_from_get_data_return"],
+                    "SAME_INPUT_NOT_PROVEN")
               print("FW114_SYSMMAP_MEMPOOL_HELPER_BODY",fw,
                     mempool[0]["address"],"bytes",mempool[0]["size_bytes"],
                     "entry",mempool[0]["accessor_entry_arm_words"],
