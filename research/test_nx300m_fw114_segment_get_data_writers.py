@@ -72,6 +72,37 @@ class SegmentGetDataWriters(unittest.TestCase):
         with self.assertRaises(ValueError):
             module.target_writer_context(tuple(writer),start+1)
 
+    def test_mempool_plus4_changes_effective_reset_field_offset(self):
+        start=module.MEMPOOL_ADDRESS
+        words=[0xe1a00000]*(module.MEMPOOL_SIZE//4)
+        for pc,word in module.MEMPOOL_EXACT_WORDS.items():
+            words[(pc-start)//4]=word
+        words[(module.MEMPOOL_GET_DATA_CALL-start)//4]=0xeb000001
+        result=module.mempool_data_pointer_witness(tuple(words),start)
+        self.assertEqual(result["get_data_return_plus_bytes"],4)
+        self.assertEqual(result["get_data_return_plus_site"],"0x00009adc")
+        self.assertEqual(
+            result["non_null_return_formula"],
+            "get_mempool_data(x) = get_data(x) + 4")
+        self.assertEqual(result["empty_reset_effective_offset_from_get_data_return"],16)
+        self.assertEqual(result["alloc_size_load_offset_from_get_data_return"],12)
+        self.assertFalse(result["same_input_effective_offsets_equal"])
+        self.assertFalse(
+            result["get_data_input_identity_proven_across_allocator_and_reset"])
+        self.assertFalse(result["runtime_pointer_alias_or_memory_overlap_excluded"])
+        self.assertFalse(result["positive_size_initializer_identified"])
+        for pc in module.MEMPOOL_EXACT_WORDS:
+            corrupted=list(words)
+            corrupted[(pc-start)//4]=0xe1a00000
+            with self.subTest(pc=pc),self.assertRaises(ValueError):
+                module.mempool_data_pointer_witness(tuple(corrupted),start)
+        corrupted=list(words)
+        corrupted[(module.MEMPOOL_GET_DATA_CALL-start)//4]=0xe1a00000
+        with self.assertRaises(ValueError):
+            module.mempool_data_pointer_witness(tuple(corrupted),start)
+        with self.assertRaises(ValueError):
+            module.mempool_data_pointer_witness(tuple(words),start+4)
+
     def test_symbol_rows_deduplicated(self):
         text="""Symbol table '.dynsym' contains 2 entries:
    4: 0000a114   796 FUNC GLOBAL DEFAULT   11 sysmmap_segment_alloc
