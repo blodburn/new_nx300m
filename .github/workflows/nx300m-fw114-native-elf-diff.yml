@@ -37,6 +37,8 @@ on:
       - 'research/test_nx300m_fw114_sysmmap_upstream_size_chain.py'
       - 'research/nx300m_fw114_segment_record_size_proof.py'
       - 'research/test_nx300m_fw114_segment_record_size_proof.py'
+      - 'research/nx300m_fw114_segment_get_data_writers.py'
+      - 'research/test_nx300m_fw114_segment_get_data_writers.py'
       - 'research/nx300m_fw114_pool_create_caller_audit.py'
       - 'research/test_nx300m_fw114_pool_create_caller_audit.py'
       - 'research/nx300m_fw114_listener_callback_registration.py'
@@ -90,6 +92,8 @@ on:
       - 'research/test_nx300m_fw114_sysmmap_upstream_size_chain.py'
       - 'research/nx300m_fw114_segment_record_size_proof.py'
       - 'research/test_nx300m_fw114_segment_record_size_proof.py'
+      - 'research/nx300m_fw114_segment_get_data_writers.py'
+      - 'research/test_nx300m_fw114_segment_get_data_writers.py'
       - 'research/nx300m_fw114_pool_create_caller_audit.py'
       - 'research/test_nx300m_fw114_pool_create_caller_audit.py'
       - 'research/nx300m_fw114_listener_callback_registration.py'
@@ -142,6 +146,7 @@ jobs:
           python3 research/test_nx300m_fw114_sysmmap_osif_arg_windows.py
           python3 research/test_nx300m_fw114_sysmmap_upstream_size_chain.py
           python3 research/test_nx300m_fw114_segment_record_size_proof.py
+          python3 research/test_nx300m_fw114_segment_get_data_writers.py
           python3 research/test_nx300m_fw114_pool_create_caller_audit.py
           python3 research/test_nx300m_fw114_listener_callback_registration.py
           python3 research/test_nx300m_fw114_listener_got_consumer_audit.py
@@ -1324,6 +1329,38 @@ jobs:
                     "ACTUAL_SIZE_UNKNOWN")
           print("PASS FW1.14/1.15 native segment record+12 shift10"
                 "→OSIF mmap r1; live allocation/DMA safety UNVERIFIED")
+          writers=report["fw114_segment_record_plus12_writers"]
+          if (not writers["same_provider_bytes"] or
+              not writers["same_accessor_body"] or
+              not writers["same_candidate_writers"] or
+              writers["proves_actual_camera_mmap_length"] or
+              writers["camera_flash_permitted"]):
+              raise SystemExit("REJECT native SYSMMAP segment record source mismatch")
+          for fw in ("fw114","fw115"):
+              p=writers[fw]
+              accessor=p["accessor"]
+              if (accessor["symbol"]!="sysmmap_segment_get_data" or
+                  p["record_identity_proven"] or
+                  p["record_plus12_initialization_proven"] or
+                  p["record_plus12_live_value_known"] or
+                  p["descriptor_plus4_equivalence_proven"] or
+                  p["physical_camera_memory_extent_verified"] or
+                  p["camera_flash_permitted"]):
+                  raise SystemExit("REJECT native segment writer unsupported proof")
+              print("FW114_SYSMMAP_GET_DATA_ACCESSOR",fw,
+                    accessor["address"],"size",accessor["size_bytes"],
+                    "entry",accessor["accessor_entry_arm_words"],
+                    "exit",accessor["accessor_exit_arm_words"],
+                    "CALLER_SIDE_SOURCES_UNPROVEN")
+              print("FW114_SYSMMAP_RECORD_12_STORE_CANDIDATES",fw,
+                    p["store_offset12_candidates"],
+                    "RECORD_IDENTITY_UNPROVEN")
+              print("FW114_SYSMMAP_GET_DATA_CALLSITES",fw,
+                    [(f["symbol"],f["direct_calls_via_plt_to_segment_get_data"])
+                     for f in p["segment_functions_examined"]
+                     if f["direct_calls_via_plt_to_segment_get_data"]])
+          print("PASS native get-data body and segment record+12 candidate write inventory; "
+                "runtime size and ownership UNPROVEN")
           print('PASS native ELF FW114/115 file-hash and sampled-symbol delta report')
           PY
 
