@@ -41,6 +41,8 @@ on:
       - 'research/test_nx300m_fw114_segment_get_data_writers.py'
       - 'research/nx300m_fw114_record_size_copy_proof.py'
       - 'research/test_nx300m_fw114_record_size_copy_proof.py'
+      - 'research/nx300m_fw114_segment_source_caller_audit.py'
+      - 'research/test_nx300m_fw114_segment_source_caller_audit.py'
       - 'research/nx300m_fw114_pool_create_caller_audit.py'
       - 'research/test_nx300m_fw114_pool_create_caller_audit.py'
       - 'research/nx300m_fw114_listener_callback_registration.py'
@@ -98,6 +100,8 @@ on:
       - 'research/test_nx300m_fw114_segment_get_data_writers.py'
       - 'research/nx300m_fw114_record_size_copy_proof.py'
       - 'research/test_nx300m_fw114_record_size_copy_proof.py'
+      - 'research/nx300m_fw114_segment_source_caller_audit.py'
+      - 'research/test_nx300m_fw114_segment_source_caller_audit.py'
       - 'research/nx300m_fw114_pool_create_caller_audit.py'
       - 'research/test_nx300m_fw114_pool_create_caller_audit.py'
       - 'research/nx300m_fw114_listener_callback_registration.py'
@@ -152,6 +156,7 @@ jobs:
           python3 research/test_nx300m_fw114_segment_record_size_proof.py
           python3 research/test_nx300m_fw114_segment_get_data_writers.py
           python3 research/test_nx300m_fw114_record_size_copy_proof.py
+          python3 research/test_nx300m_fw114_segment_source_caller_audit.py
           python3 research/test_nx300m_fw114_pool_create_caller_audit.py
           python3 research/test_nx300m_fw114_listener_callback_registration.py
           python3 research/test_nx300m_fw114_listener_got_consumer_audit.py
@@ -1479,6 +1484,34 @@ jobs:
                     "runtime_mapping_bytes_UNVERIFIED")
           print("PASS real native FW114/115 segment source+8 to get_data+12 "
                 "copy instruction chain; source value remains unknown")
+          reverse=report["fw114_source_q_callers_and_plus8_stores"]
+          if (not reverse["same_native_provider"] or
+              not reverse["same_direct_source_callers"] or
+              not reverse["same_plus8_store_candidates"] or
+              reverse["camera_buffer_size_verified"] or
+              reverse["firmware_flash_permitted"]):
+              raise SystemExit("REJECT FW native source Q inventory divergence")
+          for fw in ("fw114","fw115"):
+              item=reverse[fw]
+              if (item["copy_target"]!="sysmmap_segment_update_empty_seg" or
+                  item["copy_target_address"]!="0x0000b0e0" or
+                  not item["copy_target_prologue"] or
+                  item["complete_cross_function_Q_dataflow_proven"] or
+                  item["positive_live_size_value_observed"] or
+                  item["kernel_mmap_extent_verified"] or
+                  item["physical_camera_flash_permitted"]):
+                  raise SystemExit("REJECT static source Q scope")
+              print("FW114_SOURCE_Q_COPIER_PROLOGUE",fw,
+                    item["copy_target_prologue"],
+                    "UNPROVEN_CALLER_ARGUMENTS")
+              print("FW114_SOURCE_Q_REVERSE_CALLS",fw,
+                    item["callers"],
+                    "LIVE_Q_VALUE_UNKNOWN")
+              print("FW114_SOURCE_PLUS8_NONSTACK_STORE_CANDIDATES",fw,
+                    item["source_plus8_store_candidates"],
+                    "BASE_ALIAS_AND_RUNTIME_BYTES_UNKNOWN")
+          print("PASS FW114/115 reverse ARM callers and Q+8 store candidates; "
+                "no live size or DMA evidence")
           print('PASS native ELF FW114/115 file-hash and sampled-symbol delta report')
           PY
 
