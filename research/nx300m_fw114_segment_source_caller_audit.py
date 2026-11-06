@@ -28,6 +28,80 @@ MAX_CALLERS=48
 MAX_FIELD_CANDIDATES=120
 MAX_FUNCTION_BYTES=32768
 MAX_FILE_BYTES=32*1024*1024
+MAX_REL_LINES=40000
+MAX_POINTER_REFS=64
+MAX_INDIRECT=150
+Q_ENTRY_OPCODES={
+    0x0000b0f4:0xe50b0018, # STR incoming r0,[fp,#-24]
+    0x0000b0f8:0xe50b101c, # STR incoming r1,[fp,#-28] source Q
+    0x0000b118:0xe51b301c, # LDR r3,[fp,#-28] Q
+    0x0000b184:0xe51b301c, # LDR r3,[fp,#-28] Q
+    0x0000b188:0xe5932008, # LDR r2,[r3,#8] Q+8
+}
+
+
+def verify_source_q_incoming(words:tuple[int,...])->dict:
+    if len(words)!=TARGET_SIZE//4:
+        raise ValueError("Wrong FW field copier function length")
+    for pc,expected in Q_ENTRY_OPCODES.items():
+        if words[(pc-TARGET_START)//4]!=expected:
+            raise ValueError(f"Changed source Q AAPCS input at {pc:#x}")
+    return {
+        "source_q_is_input_register":"r1",
+        "q_register_save_pc":"0x0000b0f8",
+        "q_saved_at":"[fp,-28]",
+        "q_field_plus8_load_pc":"0x0000b188",
+        "q_source_value_positive_proven":False,
+        "incoming_r1_callers_or_execution_proven":False,
+    }
+
+
+def arm_blx_register(word:int)->dict|None:
+    """Accept only A32 BLX Rm register indirect calls, not BX/BL."""
+    if type(word) is not int or not 0<=word<=0xffffffff:
+        raise ValueError("Invalid native A32 instruction")
+    if (word&0x0ffffff0)!=0x012fff30 or (word>>28)==15:
+        return None
+    return {
+        "via_register":f"r{word&15}",
+        "opcode":f"0x{word:08x}",
+        "target_is_update_empty_seg_proven":False,
+        "indirect_branch_executed_proven":False,
+    }
+
+
+def aligned_literal_refs(blob:bytes,loads:list,needle:int)->list[dict]:
+    """Read bounded file-backed aligned raw pointer candidates; no xrefs."""
+    results=[]
+    for base,length,offset in loads:
+        for fileoff in range(offset+(4-offset%4)%4,offset+length-3,4):
+            word=struct.unpack_from("<I",blob,fileoff)[0]
+            if word not in (needle,needle|1):
+                continue
+            results.append({
+                "file_offset":f"0x{fileoff:08x}",
+                "elf_vaddr":f"0x{base+fileoff-offset:08x}",
+                "value":f"0x{word:08x}",
+                "literal_referenced_by_code_proven":False,
+            })
+            if len(results)>MAX_POINTER_REFS:
+                raise ValueError("Too many firmware function-pointer literals")
+    return results
+
+
+def named_native_relocations(text:str)->list[str]:
+    """Capture symbol-linked REL text only; no proprietary image payload."""
+    found=[]
+    for i,line in enumerate(text.splitlines()):
+        if i>MAX_REL_LINES:
+            raise ValueError("Unbounded native relocation text")
+        if TARGET not in line:
+            continue
+        found.append(line.strip()[:280])
+        if len(found)>MAX_POINTER_REFS:
+            raise ValueError("Too many target symbol relocations")
+    return found
+
 
 
 def defined_functions(symbol_table:str)->list[dict]:
@@ -88,8 +162,12 @@ def inspect(root:Path)->dict:
             f["address"]==TARGET_START and f["size"]==TARGET_SIZE]
     if len(target)!=1:
         raise ValueError("Missing or ambiguous native source-field copier")
-    relocs=jpeg.relocations(abi.tool(["readelf","-Wr",str(native)]))
+    relocation_text=abi.tool(["readelf","-Wr",str(native)])
+    relocs=jpeg.relocations(relocation_text)
+    symbol_relocations=named_native_relocations(relocation_text)
+    pointer_literals=aligned_literal_refs(blob,loads,TARGET_START)
     callers=[]
+    indirect_calls=[]
     candidate_stores=[]
     for f in funcs:
         start,size=f["address"],f["size"]
@@ -113,6 +191,21 @@ def inspect(root:Path)->dict:
                 })
                 if len(candidate_stores)>MAX_FIELD_CANDIDATES:
                     raise ValueError("Unbounded SYSMMAP +8 store inventory")
+            for i,opcode in enumerate(words):
+                call=arm_blx_register(opcode)
+                if call is None:
+                    continue
+                indirect_calls.append({
+                    "function":f["symbol"],
+                    "site":f"0x{start+4*i:08x}",
+                    **call,
+                    "preceding_a32_words":[{
+                        "pc":f"0x{start+4*j:08x}",
+                        "opcode":f"0x{words[j]:08x}"}
+                        for j in range(max(0,i-10),i)],
+                })
+                if len(indirect_calls)>MAX_INDIRECT:
+                    raise ValueError("Too many candidate ARM BLX register calls")
         else:
             words=None
         for site,target_address in arm.scan_direct_calls(
@@ -167,6 +260,10 @@ def inspect(root:Path)->dict:
             "pc":f"0x{TARGET_START+i*4:08x}",
             "opcode":f"0x{word:08x}"}
             for i,word in enumerate(words[:24])],
+        "source_q_abi_proof":verify_source_q_incoming(words),
+        "raw_function_pointer_literals":pointer_literals,
+        "named_symbol_relocations":symbol_relocations,
+        "sysmmap_indirect_blx_candidates":indirect_calls,
         "callers":sorted(callers,key=lambda x:(x["site"],x["function"])),
         "source_plus8_store_candidates":sorted(
             candidate_stores,key=lambda x:(x["site"],x["function"])),
