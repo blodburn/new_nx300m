@@ -48,6 +48,36 @@ ACCESSOR_EXACT_WORDS={
     0x9f18:0xe12fff1e,  # BX LR
 }
 STORED_WORD=0xe583200c  # STR r2,[r3,#12], NOT an SP write
+EMPTY_RESET_OPCODES={
+    0xb124:0xe51b0018,  # LDR r0,[fp,#-24] before destination lookup
+    0xb12c:0xe50b0014,  # STR r0,[fp,#-20] destination pointer
+    0xb194:0xe51b3014,  # LDR r3,[fp,#-20]
+    0xb198:0xe3a02000,  # MOV r2,#0
+    0xb19c:0xe583200c,  # STR r2,[r3,#12] zero size-unit field
+    0xb1a0:0xe51b3014,  # LDR r3,[fp,#-20]
+    0xb1a4:0xe3a02065,  # MOV r2,#101
+    0xb1a8:0xe5c32010,  # STRB r2,[r3,#16] ASCII 'e'
+}
+
+
+def exact_empty_segment_record_reset(words:tuple[int,...],start:int)->dict:
+    for site,opcode in EMPTY_RESET_OPCODES.items():
+        index=(site-start)//4
+        if (site<start or (site-start)%4 or index>=len(words) or
+            words[index]!=opcode):
+            raise ValueError("Native empty-segment +12 reset changed")
+    return {
+        "native_zero_source":"MOV r2,#0 @ 0x0000b198",
+        "zero_store_site":"0x0000b19c",
+        "native_zero_store":"STR r2,[r3,#12]",
+        "status_marker_site":"0x0000b1a8",
+        "status_marker_byte":0x65,
+        "writes_zero_to_indicated_pointer_plus12":True,
+        "destination_aliases_size_record_returned_by_get_data":False,
+        "real_positive_allocation_size_initializer_found":False,
+        "runtime_buffer_size_or_dma_safety_verified":False,
+    }
+
 
 
 def accessor_static_pointer_witness(words:tuple[int,...],start:int)->dict:
@@ -87,6 +117,8 @@ def target_writer_context(
             {"pc":f"0x{start+4*i:08x}","opcode":f"0x{words[i]:08x}"}
             for i in range(index+1,hi)],
         "record_return_alias_to_writer_r3_proven":False,
+        "exact_empty_record_zero_reset":
+            exact_empty_segment_record_reset(words,start),
         "stored_r2_runtime_value_observed":False,
         "write_always_executed_proven":False,
     }
@@ -158,12 +190,19 @@ def scan_segment_function(
         if len(candidates)>MAX_CANDIDATES:
             raise ValueError("Unbounded segment +12 load/store candidates")
     edges=[]
+    writer_import_calls=[]
     for site,target in arm.scan_direct_calls(image,start,size,loads):
         try:
             got=jpeg.plt_got(image,loads,target)
             name=relocations.get(got)
         except ValueError:
             name=None
+        if entry["symbol"]==STORE_FUNCTION:
+            writer_import_calls.append({
+                "site":f"0x{site:08x}",
+                "imported_symbol":name,
+                "unresolved_import":name is None,
+            })
         if name==GET_DATA:
             edges.append(f"0x{site:08x}")
         if len(edges)>MAX_CANDIDATES:
@@ -185,6 +224,7 @@ def scan_segment_function(
         "body_sha256":hashlib.sha256(image[offset:offset+size]).hexdigest(),
         "offset_plus12_arm_load_store_candidates":candidates,
         "direct_calls_via_plt_to_segment_get_data":edges,
+        "writer_function_imported_arm_calls":writer_import_calls,
         "accessor_entry_arm_words":first,
         "accessor_exit_arm_words":last,
         "accessor_pointer_static_proof":(
