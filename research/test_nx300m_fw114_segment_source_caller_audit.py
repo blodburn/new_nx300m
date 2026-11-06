@@ -63,6 +63,42 @@ class QSourceCallers(unittest.TestCase):
         lines="0010 R_ARM_ABS32 0000b0e0 sysmmap_segment_update_empty_seg\\n"
         self.assertEqual(len(audit.named_native_relocations(lines)),1)
 
+    def test_abi_relocation_and_indirect_scope_witness(self):
+        symbols=[
+            "0001bb14 00008315 R_ARM_GLOB_DAT 0000b0e0 "+
+            audit.TARGET,
+            "0001babc 00008316 R_ARM_JUMP_SLOT 0000b0e0 "+
+            audit.TARGET,
+        ]
+        pointer=[{
+            "elf_vaddr":"0x00001214",
+            "file_offset":"0x00001214",
+            "value":"0x0000b0e0",
+            "literal_referenced_by_code_proven":False,
+        }]
+        blx=[{"site":"0x0000b9e8"}]
+        evidence=audit.qualified_indirect_reference_evidence(
+            symbols,pointer,[],blx)
+        self.assertTrue(
+            evidence["target_address_present_in_runtime_linkage"])
+        self.assertEqual(
+            evidence["direct_arm_bl_or_plt_callsite_count"],0)
+        self.assertEqual(evidence["indirect_arm_blx_site_count"],1)
+        self.assertFalse(
+            evidence["indirect_blx_linked_to_target_function_proven"])
+        self.assertFalse(
+            evidence["runtime_copy_function_executed_proven"])
+        with self.assertRaises(ValueError):
+            audit.qualified_indirect_reference_evidence(
+                symbols[:-1],pointer,[],blx)
+        with self.assertRaises(ValueError):
+            audit.qualified_indirect_reference_evidence(
+                symbols,[],[],blx)
+        bad=[dict(pointer[0],value="0x0000b0e1")]
+        with self.assertRaises(ValueError):
+            audit.qualified_indirect_reference_evidence(
+                symbols,bad,[],blx)
+
     def test_all_defined_native_functions_are_deduplicated(self):
         sample="""Symbol table '.symtab':
    1: 0000b0e0   244 FUNC GLOBAL DEFAULT   12 sysmmap_segment_update_empty_seg
