@@ -1366,6 +1366,17 @@ jobs:
                   w["stored_r2_runtime_value_observed"] or
                   w["write_always_executed_proven"]):
                   raise SystemExit("REJECT native get_data record+12 store")
+              reset=w["exact_empty_record_zero_reset"]
+              if (reset["zero_store_site"]!="0x0000b19c" or
+                  reset["status_marker_site"]!="0x0000b1a8" or
+                  reset["status_marker_byte"]!=101 or
+                  not reset["writes_zero_to_indicated_pointer_plus12"] or
+                  reset["destination_aliases_size_record_returned_by_get_data"] or
+                  reset["real_positive_allocation_size_initializer_found"] or
+                  reset["runtime_buffer_size_or_dma_safety_verified"]):
+                  raise SystemExit("REJECT native empty segment reset dataflow")
+              print("FW114_SYSMMAP_EMPTY_RECORD_RESET",fw,reset,
+                    "writer_import_calls",writer[0]["writer_function_imported_arm_calls"])
               print("FW114_SYSMMAP_RECORD_12_WRITER_WINDOW",fw,
                     writer[0]["symbol"],"start",writer[0]["address"],
                     "body_bytes",writer[0]["size_bytes"],
