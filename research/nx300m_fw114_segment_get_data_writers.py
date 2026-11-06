@@ -34,6 +34,25 @@ FUNC = re.compile(
 
 ACCESSOR_ADDRESS=0x00009ed4
 ACCESSOR_SIZE=72
+MEMPOOL_ADDRESS=0x00009a94
+MEMPOOL_SIZE=96
+MEMPOOL_GET_DATA_CALL=0x00009ac4
+MEMPOOL_EXACT_WORDS={
+    0x9aa0:0xe50b0010, # STR input r0,[fp,#-16]
+    0x9aac:0xe3a03000, # MOV r3,#0
+    0x9ab0:0xe50b3008, # STR r3,[fp,#-8], null return
+    0x9abc:0x0a000008, # BEQ null-return path
+    0x9ac0:0xe51b0010, # LDR r0,[fp,#-16], get_data arg
+    0x9ac8:0xe50b000c, # STR get_data r0,[fp,#-12]
+    0x9ad0:0xe3530000, # CMP returned pointer,#0
+    0x9ad4:0x0a000002, # BEQ 0x9ae4
+    0x9ad8:0xe51b300c, # LDR r3,[fp,#-12]
+    0x9adc:0xe2833004, # ADD r3,r3,#4
+    0x9ae0:0xe50b3008, # STR r3,[fp,#-8]
+    0x9ae4:0xe51b3008, # LDR r3,[fp,#-8]
+    0x9ae8:0xe1a00003, # MOV r0,r3
+}
+
 STORE_FUNCTION="sysmmap_segment_update_empty_seg"
 STORE_ADDRESS=0x0000b19c
 ACCESSOR_EXACT_WORDS={
@@ -96,6 +115,42 @@ def accessor_static_pointer_witness(words:tuple[int,...],start:int)->dict:
         "native_input_pointer_ownership_proven":False,
         "record_plus12_writer_alias_proven":False,
         "actual_camera_mapped_bytes_proven":False,
+    }
+
+
+def mempool_data_pointer_witness(
+    words:tuple[int,...],start:int,callsite:int=MEMPOOL_GET_DATA_CALL
+)->dict:
+    """Prove a local +4 offset after imported get_data returns non-NULL.
+
+    Relative offsets describe equal input pointer *hypothetically*. This
+    does not prove calls with different arguments return the same record.
+    """
+    if start!=MEMPOOL_ADDRESS or len(words)!=MEMPOOL_SIZE//4 or (
+        callsite!=MEMPOOL_GET_DATA_CALL):
+        raise ValueError("Wrong native segment mempool helper")
+    for pc,expected in MEMPOOL_EXACT_WORDS.items():
+        index=(pc-start)//4
+        if index<0 or index>=len(words) or words[index]!=expected:
+            raise ValueError(f"Changed native mempool pointer path at {pc:#x}")
+    # Imported BL target is verified separately through ELF PLT/GOT metadata.
+    if (words[(callsite-start)//4]>>24)&15!=11:
+        raise ValueError("Mempool helper does not BL get_data")
+    return {
+        "mempool_helper":MEMPOOL_DATA,
+        "helper_entry":"0x00009a94",
+        "get_data_bl":"0x00009ac4",
+        "get_data_return_plus_bytes":4,
+        "get_data_return_plus_site":"0x00009adc",
+        "non_null_return_formula":"get_mempool_data(x) = get_data(x) + 4",
+        "empty_reset_store_offset_from_mempool_result":12,
+        "empty_reset_effective_offset_from_get_data_return":16,
+        "alloc_size_load_offset_from_get_data_return":12,
+        "same_input_effective_offsets_equal":False,
+        "get_data_input_identical_across_allocator_and_reset":False,
+        "runtime_pointer_alias_or_memory_overlap_excluded":False,
+        "positive_size_initializer_identified":False,
+        "actual_size_bytes_or_dma_verified":False,
     }
 
 
@@ -231,6 +286,9 @@ def scan_segment_function(
         "accessor_pointer_static_proof":(
             accessor_static_pointer_witness(words,start)
             if entry["symbol"]==GET_DATA else None),
+        "mempool_pointer_offset_proof":(
+            mempool_data_pointer_witness(words,start)
+            if entry["symbol"]==MEMPOOL_DATA else None),
         "record_plus12_candidate_writer_context":(
             target_writer_context(words,start)
             if entry["symbol"]==STORE_FUNCTION else None),
@@ -252,6 +310,20 @@ def inspect(root:Path)->dict:
     if len(accessor)!=1:
         # An imported function is not resolved by pretending local code.
         raise ValueError("Missing or ambiguous defined native get_data body")
+    mempool=[f for f in examined if f["symbol"]==MEMPOOL_DATA]
+    if len(mempool)!=1 or (
+        "0x00009ac4" not in
+        mempool[0]["direct_calls_via_plt_to_segment_get_data"]):
+        raise ValueError("Missing real native get_mempool_data -> get_data BL")
+    resets=[f for f in examined if f["symbol"]==STORE_FUNCTION]
+    if len(resets)!=1 or not any(
+        c["site"]=="0x0000b128" and c["imported_symbol"]==MEMPOOL_DATA
+        for c in resets[0]["writer_function_imported_arm_calls"]):
+        raise ValueError("Missing real native reset -> get_mempool_data BL")
+    mempool_proof=mempool[0]["mempool_pointer_offset_proof"]
+    if (mempool_proof["empty_reset_effective_offset_from_get_data_return"]==
+        mempool_proof["alloc_size_load_offset_from_get_data_return"]):
+        raise ValueError("Misidentified reset as allocation size +12 setter")
     stores=[{"function":f["symbol"],**site}
             for f in examined for site in
             f["offset_plus12_arm_load_store_candidates"]
@@ -262,6 +334,8 @@ def inspect(root:Path)->dict:
         "scope":"PRIVATE_UNOFFICIAL_ARM_SEGMENT_RECORD_12_CANDIDATES",
         "provider_sha256":hashlib.sha256(image).hexdigest(),
         "accessor":accessor[0],
+        "mempool":mempool[0],
+        "static_reset_vs_alloc_record_offset_proof":mempool_proof,
         "segment_functions_examined":examined,
         "store_offset12_candidates":stores,
         "record_identity_proven":False,
@@ -280,6 +354,11 @@ def compare_versions(fw114:Path,fw115:Path)->dict:
         "same_provider_bytes":a["provider_sha256"]==b["provider_sha256"],
         "same_accessor_body":a["accessor"]["body_sha256"]==
             b["accessor"]["body_sha256"],
+        "same_mempool_helper_body":a["mempool"]["body_sha256"]==
+            b["mempool"]["body_sha256"],
+        "same_pointer_offsets":
+            a["static_reset_vs_alloc_record_offset_proof"]==
+            b["static_reset_vs_alloc_record_offset_proof"],
         "same_candidate_writers":a["store_offset12_candidates"]==
             b["store_offset12_candidates"],
         "proves_actual_camera_mmap_length":False,
