@@ -147,7 +147,7 @@ def mempool_data_pointer_witness(
         "empty_reset_effective_offset_from_get_data_return":16,
         "alloc_size_load_offset_from_get_data_return":12,
         "same_input_effective_offsets_equal":False,
-        "get_data_input_identical_across_allocator_and_reset":False,
+        "get_data_input_identity_proven_across_allocator_and_reset":False,
         "runtime_pointer_alias_or_memory_overlap_excluded":False,
         "positive_size_initializer_identified":False,
         "actual_size_bytes_or_dma_verified":False,
