@@ -1512,6 +1512,20 @@ jobs:
               if item["callers"]:
                   print("FW114_SOURCE_Q_DIRECT_CALLS_DETECTED_REVIEW",fw,
                         item["callers"])
+              dynamic=item["dynamic_reference_proof"]
+              if (dynamic["glob_dat_site"]!="0x0001bb14" or
+                  dynamic["jump_slot_site"]!="0x0001babc" or
+                  dynamic["literal_vaddr"]!="0x00001214" or
+                  dynamic["literal_value"]!="0x0000b0e0" or
+                  not dynamic["target_address_present_in_runtime_linkage"] or
+                  dynamic["direct_arm_bl_or_plt_callsite_count"]!=0 or
+                  dynamic["indirect_arm_blx_site_count"]<1 or
+                  dynamic["indirect_blx_linked_to_target_function_proven"] or
+                  dynamic["runtime_copy_function_executed_proven"] or
+                  dynamic["q_source_object_identity_proven"]):
+                  raise SystemExit("REJECT FW native indirect callback reference scope")
+              print("PASS_FW114_Q_COPIER_DYNAMIC_POINTER_REFERENCES",fw,
+                    dynamic,"INDIRECT_TARGET_NOT_PROVEN")
               print("FW114_SOURCE_Q_SYMBOL_RELOCATIONS",fw,
                     item["named_symbol_relocations"],
                     "NO_PROOF_OF_RUNTIME_CALLBACK")
