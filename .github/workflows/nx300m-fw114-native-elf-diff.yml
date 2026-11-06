@@ -35,6 +35,8 @@ on:
       - 'research/test_nx300m_fw114_sysmmap_osif_arg_windows.py'
       - 'research/nx300m_fw114_sysmmap_upstream_size_chain.py'
       - 'research/test_nx300m_fw114_sysmmap_upstream_size_chain.py'
+      - 'research/nx300m_fw114_segment_record_size_proof.py'
+      - 'research/test_nx300m_fw114_segment_record_size_proof.py'
       - 'research/nx300m_fw114_pool_create_caller_audit.py'
       - 'research/test_nx300m_fw114_pool_create_caller_audit.py'
       - 'research/nx300m_fw114_listener_callback_registration.py'
@@ -86,6 +88,8 @@ on:
       - 'research/test_nx300m_fw114_sysmmap_osif_arg_windows.py'
       - 'research/nx300m_fw114_sysmmap_upstream_size_chain.py'
       - 'research/test_nx300m_fw114_sysmmap_upstream_size_chain.py'
+      - 'research/nx300m_fw114_segment_record_size_proof.py'
+      - 'research/test_nx300m_fw114_segment_record_size_proof.py'
       - 'research/nx300m_fw114_pool_create_caller_audit.py'
       - 'research/test_nx300m_fw114_pool_create_caller_audit.py'
       - 'research/nx300m_fw114_listener_callback_registration.py'
@@ -137,6 +141,7 @@ jobs:
           python3 research/test_nx300m_fw114_sysmmap_provider_audit.py
           python3 research/test_nx300m_fw114_sysmmap_osif_arg_windows.py
           python3 research/test_nx300m_fw114_sysmmap_upstream_size_chain.py
+          python3 research/test_nx300m_fw114_segment_record_size_proof.py
           python3 research/test_nx300m_fw114_pool_create_caller_audit.py
           python3 research/test_nx300m_fw114_listener_callback_registration.py
           python3 research/test_nx300m_fw114_listener_got_consumer_audit.py
@@ -1285,6 +1290,40 @@ jobs:
                             "RUNTIME_REGION_SIZE_UNKNOWN")
           print("PASS SYSMMAP FW114/115 upstream r1 native ARM windows; "
                 "full size dataflow and real mapped bytes remain unknown")
+          segment=report["fw114_segment_record_mmap_size_units"]
+          if (not segment["segment_function_body_byte_equal"] or
+              segment["actual_mmap_bytes_measured"] or
+              segment["camera_flash_permitted"]):
+              raise SystemExit("REJECT native segment mapping size overclaim")
+          for fw in ("fw114","fw115"):
+              p=segment[fw]
+              expected_calls={
+                  "0x0000a2e4":"sysmmap_segment_get_data",
+                  "0x0000a344":"sysmmap_osif_alloc"}
+              if (p["library"]!="libsys-mmap-manager.so" or
+                  p["arm_call_witnesses"]!=expected_calls or
+                  p["record_pointer_saved_from_r0_at"]!="0x0000a2e8" or
+                  p["record_pointer_reloaded_at"]!=
+                    ["0x0000a320","0x0000a328"] or
+                  p["record_size_word_load"]!="0x0000a32c" or
+                  p["shift_left_bits"]!=10 or
+                  p["length_to_osif_r1_at"]!="0x0000a33c" or
+                  p["static_mmap_length_formula"]!=
+                    "uint32(record[+12] << 10) [wrap possible]" or
+                  not p["conditional_path_may_be_skipped"] or
+                  p["record_value_or_actual_allocated_bytes_observed"] or
+                  p["descriptor_plus4_equals_record_plus12_times1024"] or
+                  p["on_camera_dma_coherency_or_ownership_verified"] or
+                  p["firmware_flash_permitted"]):
+                  raise SystemExit("REJECT native ARM record KiB→mmap length")
+              print("FW114_SEGMENT_RECORD_SIZE_SHIFT",fw,
+                    "source",p["arm_call_witnesses"],
+                    "word",p["record_size_word_load"],
+                    "left_shift",p["shift_left_bits"],
+                    "mmap_r1_site",p["length_to_osif_r1_at"],
+                    "ACTUAL_SIZE_UNKNOWN")
+          print("PASS FW1.14/1.15 native segment record+12 shift10"
+                "→OSIF mmap r1; live allocation/DMA safety UNVERIFIED")
           print('PASS native ELF FW114/115 file-hash and sampled-symbol delta report')
           PY
 
