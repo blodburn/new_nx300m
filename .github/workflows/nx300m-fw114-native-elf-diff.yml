@@ -1377,6 +1377,21 @@ jobs:
                   raise SystemExit("REJECT native empty segment reset dataflow")
               print("FW114_SYSMMAP_EMPTY_RECORD_RESET",fw,reset,
                     "writer_import_calls",writer[0]["writer_function_imported_arm_calls"])
+              if not any(
+                  c["site"]=="0x0000b128" and
+                  c["imported_symbol"]=="sysmmap_segment_get_mempool_data"
+                  for c in writer[0]["writer_function_imported_arm_calls"]):
+                  raise SystemExit("REJECT changed mempool destination helper")
+              mempool=[f for f in p["segment_functions_examined"]
+                       if f["symbol"]=="sysmmap_segment_get_mempool_data"]
+              if len(mempool)!=1 or not mempool[0]["accessor_entry_arm_words"]:
+                  raise SystemExit("REJECT missing native mempool helper")
+              print("FW114_SYSMMAP_MEMPOOL_HELPER_BODY",fw,
+                    mempool[0]["address"],"bytes",mempool[0]["size_bytes"],
+                    "entry",mempool[0]["accessor_entry_arm_words"],
+                    "exit",mempool[0]["accessor_exit_arm_words"],
+                    "get_data_calls",
+                    mempool[0]["direct_calls_via_plt_to_segment_get_data"])
               print("FW114_SYSMMAP_RECORD_12_WRITER_WINDOW",fw,
                     writer[0]["symbol"],"start",writer[0]["address"],
                     "body_bytes",writer[0]["size_bytes"],
