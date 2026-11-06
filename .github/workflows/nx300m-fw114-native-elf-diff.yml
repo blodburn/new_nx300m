@@ -1347,6 +1347,31 @@ jobs:
                   p["physical_camera_memory_extent_verified"] or
                   p["camera_flash_permitted"]):
                   raise SystemExit("REJECT native segment writer unsupported proof")
+              proof=accessor["accessor_pointer_static_proof"]
+              if (proof["get_data_start"]!="0x00009ed4" or
+                  proof["non_null_arm_pointer_dereference"]!=
+                    "r0_return = *( *(input_r0 + 0) + 4 )" or
+                  proof["native_input_pointer_ownership_proven"] or
+                  proof["record_plus12_writer_alias_proven"] or
+                  proof["actual_camera_mapped_bytes_proven"]):
+                  raise SystemExit("REJECT native record get_data pointer proof")
+              writer=[f for f in p["segment_functions_examined"]
+                      if f["symbol"]=="sysmmap_segment_update_empty_seg"]
+              if len(writer)!=1:
+                  raise SystemExit("REJECT missing segment record+12 writer")
+              w=writer[0]["record_plus12_candidate_writer_context"]
+              if (not w or w["site"]!="0x0000b19c" or
+                  w["opcode"]!="0xe583200c" or
+                  w["record_return_alias_to_writer_r3_proven"] or
+                  w["stored_r2_runtime_value_observed"] or
+                  w["write_always_executed_proven"]):
+                  raise SystemExit("REJECT native get_data record+12 store")
+              print("FW114_SYSMMAP_RECORD_12_WRITER_WINDOW",fw,
+                    writer[0]["symbol"],"start",writer[0]["address"],
+                    "body_bytes",writer[0]["size_bytes"],
+                    "before",w["prior_arm_words"],
+                    "after",w["following_arm_words"],
+                    "BASE_ALIAS_TO_ACCESSOR_RETURN_NOT_PROVEN")
               print("FW114_SYSMMAP_GET_DATA_ACCESSOR",fw,
                     accessor["address"],"size",accessor["size_bytes"],
                     "entry",accessor["accessor_entry_arm_words"],
