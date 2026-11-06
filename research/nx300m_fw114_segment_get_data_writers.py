@@ -31,6 +31,66 @@ FUNC = re.compile(
     r"(?:LOCAL|GLOBAL|WEAK)\s+\S+\s+(\S+)\s+(.+?)\s*$"
 )
 
+ACCESSOR_ADDRESS=0x00009ed4
+ACCESSOR_SIZE=72
+STORE_FUNCTION="sysmmap_segment_update_empty_seg"
+STORE_ADDRESS=0x0000b19c
+ACCESSOR_EXACT_WORDS={
+    0x9ee0:0xe50b0010,  # stack save input r0
+    0x9ef0:0xe3530000,  # CMP r3,#0
+    0x9ef4:0x0a000003,  # BEQ 0x9f08 (returns initialized zero)
+    0x9ef8:0xe51b3010,  # LDR r3,[fp,#-16]
+    0x9efc:0xe5933000,  # LDR r3,[r3]
+    0x9f00:0xe5933004,  # LDR r3,[r3,#4]
+    0x9f04:0xe50b3008,  # STR r3,[fp,#-8]
+    0x9f08:0xe51b3008,  # LDR r3,[fp,#-8]
+    0x9f0c:0xe1a00003,  # MOV r0,r3
+    0x9f18:0xe12fff1e,  # BX LR
+}
+STORED_WORD=0xe583200c  # STR r2,[r3,#12], NOT an SP write
+
+
+def accessor_static_pointer_witness(words:tuple[int,...],start:int)->dict:
+    if start!=ACCESSOR_ADDRESS or len(words)!=ACCESSOR_SIZE//4:
+        raise ValueError("Wrong native segment accessor definition")
+    for address,expected in ACCESSOR_EXACT_WORDS.items():
+        idx=(address-start)//4
+        if idx<0 or idx>=len(words) or words[idx]!=expected:
+            raise ValueError("Changed native segment get_data pointer chain")
+    return {
+        "get_data_start":f"0x{start:08x}",
+        "non_null_arm_pointer_dereference":
+            "r0_return = *( *(input_r0 + 0) + 4 )",
+        "null_arg_returns_zero_candidate":True,
+        "native_input_pointer_ownership_proven":False,
+        "record_plus12_writer_alias_proven":False,
+        "actual_camera_mapped_bytes_proven":False,
+    }
+
+
+def target_writer_context(
+    words:tuple[int,...],start:int,site:int=STORE_ADDRESS,
+)->dict:
+    index=(site-start)//4
+    if (start<0 or start%4 or site<start or site%4 or
+        index>=len(words) or index<0 or words[index]!=STORED_WORD):
+        raise ValueError("Changed native segment record+12 store")
+    lo=max(0,index-40)
+    hi=min(len(words),index+13)
+    return {
+        "site":f"0x{site:08x}",
+        "opcode":f"0x{STORED_WORD:08x}",
+        "prior_arm_words":[
+            {"pc":f"0x{start+4*i:08x}","opcode":f"0x{words[i]:08x}"}
+            for i in range(lo,index)],
+        "following_arm_words":[
+            {"pc":f"0x{start+4*i:08x}","opcode":f"0x{words[i]:08x}"}
+            for i in range(index+1,hi)],
+        "record_return_alias_to_writer_r3_proven":False,
+        "stored_r2_runtime_value_observed":False,
+        "write_always_executed_proven":False,
+    }
+
 
 def segment_functions(symbol_table:str)->list[dict]:
     """Deduplicate .dynsym / .symtab without making up symbol addresses."""
@@ -127,6 +187,12 @@ def scan_segment_function(
         "direct_calls_via_plt_to_segment_get_data":edges,
         "accessor_entry_arm_words":first,
         "accessor_exit_arm_words":last,
+        "accessor_pointer_static_proof":(
+            accessor_static_pointer_witness(words,start)
+            if entry["symbol"]==GET_DATA else None),
+        "record_plus12_candidate_writer_context":(
+            target_writer_context(words,start)
+            if entry["symbol"]==STORE_FUNCTION else None),
         "real_record_writer_proven":False,
         "actual_mapped_bytes_observed":False,
     }
