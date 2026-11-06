@@ -39,8 +39,10 @@ MEMPOOL_SIZE=96
 MEMPOOL_GET_DATA_CALL=0x00009ac4
 MEMPOOL_EXACT_WORDS={
     0x9aa0:0xe50b0010, # STR input r0,[fp,#-16]
+    0x9aa4:0xe3a03000, # MOV r3,#0
+    0x9aa8:0xe50b3008, # STR r3,[fp,#-8], null-return local
     0x9aac:0xe3a03000, # MOV r3,#0
-    0x9ab0:0xe50b3008, # STR r3,[fp,#-8], null return
+    0x9ab0:0xe50b300c, # STR r3,[fp,#-12], get_data-return local
     0x9abc:0x0a000008, # BEQ null-return path
     0x9ac0:0xe51b0010, # LDR r0,[fp,#-16], get_data arg
     0x9ac8:0xe50b000c, # STR get_data r0,[fp,#-12]
