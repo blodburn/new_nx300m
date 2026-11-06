@@ -50,15 +50,27 @@ class SegmentGetDataWriters(unittest.TestCase):
             with self.subTest(site=site),self.assertRaises(ValueError):
                 module.accessor_static_pointer_witness(
                     tuple(changed),module.ACCESSOR_ADDRESS)
-        writer=(0xe1a00000,module.STORED_WORD,0xe1a00000)
-        ctx=module.target_writer_context(writer,0xb198)
+        start=0xb124
+        writer=[0xe1a00000]*((0xb1a8-start)//4+1)
+        for site,opcode in module.EMPTY_RESET_OPCODES.items():
+            writer[(site-start)//4]=opcode
+        ctx=module.target_writer_context(tuple(writer),start)
         self.assertEqual(ctx["site"],"0x0000b19c")
         self.assertFalse(ctx["record_return_alias_to_writer_r3_proven"])
         self.assertFalse(ctx["stored_r2_runtime_value_observed"])
+        reset=ctx["exact_empty_record_zero_reset"]
+        self.assertTrue(reset["writes_zero_to_indicated_pointer_plus12"])
+        self.assertEqual(reset["status_marker_byte"],0x65)
+        self.assertFalse(reset["real_positive_allocation_size_initializer_found"])
+        for pc in module.EMPTY_RESET_OPCODES:
+            changed=list(writer)
+            changed[(pc-start)//4]=0xe1a00000
+            with self.subTest(pc=pc),self.assertRaises(ValueError):
+                module.target_writer_context(tuple(changed),start)
         with self.assertRaises(ValueError):
             module.target_writer_context((0,0,0),0xb198)
         with self.assertRaises(ValueError):
-            module.target_writer_context(writer,0xb199)
+            module.target_writer_context(tuple(writer),start+1)
 
     def test_symbol_rows_deduplicated(self):
         text="""Symbol table '.dynsym' contains 2 entries:
