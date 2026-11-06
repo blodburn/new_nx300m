@@ -20,6 +20,7 @@ import nx300m_pw_ui_bl_call_audit as arm
 import nx300m_native_jpeg_abi_boundary_audit as jpeg
 
 GET_DATA = "sysmmap_segment_get_data"
+MEMPOOL_DATA = "sysmmap_segment_get_mempool_data"
 PREFIX = "sysmmap_segment_"
 MAX_SYM_LINES = 50000
 MAX_CANDIDATES = 128
@@ -207,10 +208,10 @@ def scan_segment_function(
             edges.append(f"0x{site:08x}")
         if len(edges)>MAX_CANDIDATES:
             raise ValueError("Unbounded segment record accessor callers")
-    if entry["symbol"]==GET_DATA:
+    if entry["symbol"] in (GET_DATA,MEMPOOL_DATA):
         first=[{"pc":f"0x{start+4*i:08x}",
                 "word":f"0x{w:08x}"} for i,w in
-               enumerate(words[:32])]
+               enumerate(words[:64])]
         last=[{"pc":f"0x{start+4*i:08x}",
                "word":f"0x{words[i]:08x}"} for i in
               range(max(0,len(words)-12),len(words))]
