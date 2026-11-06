@@ -39,6 +39,7 @@ import nx300m_fw114_sysmmap_osif_arg_windows as sysmmap_args
 import nx300m_fw114_sysmmap_upstream_size_chain as sysmmap_upstream
 import nx300m_fw114_segment_record_size_proof as segment_record_size
 import nx300m_fw114_segment_get_data_writers as record_writers
+import nx300m_fw114_record_size_copy_proof as copy_size
 import nx300m_fw114_pool_create_caller_audit as pool_callers
 import nx300m_fw114_listener_callback_registration as listeners
 import nx300m_fw114_listener_got_consumer_audit as listener_got
@@ -401,6 +402,8 @@ def analyze(archives: dict[str, Path], private_root: Path,
             extracted_roots["1.14"], extracted_roots["1.15"])
         photo_initialization_links = photo_init_callers.compare_versions(
             extracted_roots["1.14"], extracted_roots["1.15"])
+        field_copy_size = copy_size.compare_versions(
+            extracted_roots["1.14"], extracted_roots["1.15"])
         segment_record_writer_candidates = record_writers.compare_versions(
             extracted_roots["1.14"], extracted_roots["1.15"])
         segment_record_units_proof = segment_record_size.compare_versions(
@@ -438,6 +441,7 @@ def analyze(archives: dict[str, Path], private_root: Path,
             "fw114_sysmmap_upstream_size_windows":sysmmap_upstream_windows,
             "fw114_segment_record_mmap_size_units":segment_record_units_proof,
             "fw114_segment_record_plus12_writers":segment_record_writer_candidates,
+            "fw114_record_plus12_field_copy":field_copy_size,
             "fw114_pool_creation_callers":pool_origins,
             "fw114_pool_listener_relocation_witnesses":listener_relocation_witnesses,
             "fw114_pool_listener_got_consumers":listener_got_consumers,

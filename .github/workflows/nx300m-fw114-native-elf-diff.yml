@@ -39,6 +39,8 @@ on:
       - 'research/test_nx300m_fw114_segment_record_size_proof.py'
       - 'research/nx300m_fw114_segment_get_data_writers.py'
       - 'research/test_nx300m_fw114_segment_get_data_writers.py'
+      - 'research/nx300m_fw114_record_size_copy_proof.py'
+      - 'research/test_nx300m_fw114_record_size_copy_proof.py'
       - 'research/nx300m_fw114_pool_create_caller_audit.py'
       - 'research/test_nx300m_fw114_pool_create_caller_audit.py'
       - 'research/nx300m_fw114_listener_callback_registration.py'
@@ -94,6 +96,8 @@ on:
       - 'research/test_nx300m_fw114_segment_record_size_proof.py'
       - 'research/nx300m_fw114_segment_get_data_writers.py'
       - 'research/test_nx300m_fw114_segment_get_data_writers.py'
+      - 'research/nx300m_fw114_record_size_copy_proof.py'
+      - 'research/test_nx300m_fw114_record_size_copy_proof.py'
       - 'research/nx300m_fw114_pool_create_caller_audit.py'
       - 'research/test_nx300m_fw114_pool_create_caller_audit.py'
       - 'research/nx300m_fw114_listener_callback_registration.py'
@@ -147,6 +151,7 @@ jobs:
           python3 research/test_nx300m_fw114_sysmmap_upstream_size_chain.py
           python3 research/test_nx300m_fw114_segment_record_size_proof.py
           python3 research/test_nx300m_fw114_segment_get_data_writers.py
+          python3 research/test_nx300m_fw114_record_size_copy_proof.py
           python3 research/test_nx300m_fw114_pool_create_caller_audit.py
           python3 research/test_nx300m_fw114_listener_callback_registration.py
           python3 research/test_nx300m_fw114_listener_got_consumer_audit.py
@@ -1435,6 +1440,45 @@ jobs:
                      if f["direct_calls_via_plt_to_segment_get_data"]])
           print("PASS native get-data body and segment record+12 candidate write inventory; "
                 "runtime size and ownership UNPROVEN")
+          copy=report["fw114_record_plus12_field_copy"]
+          if (not copy["native_body_equal"] or
+              copy["actual_mmap_length_observed"] or
+              copy["camera_flash_permitted"]):
+              raise SystemExit("REJECT FW114 segment+12 copy divergence")
+          for fw in ("fw114","fw115"):
+              row=copy[fw]
+              p=row["candidate_positive_field_copy_static_proof"]
+              if (p["native_function"]!="sysmmap_segment_update_empty_seg" or
+                  p["native_address"]!="0x0000b0e0" or
+                  p["source_field_offset_bytes"]!=8 or
+                  p["source_load_site"]!="0x0000b188" or
+                  not p["source_pointer_stack_slot_fp_minus28"] or
+                  p["destination_helper_bl"]!="0x0000b128" or
+                  p["destination_helper_returns_get_data_plus_bytes"]!=4 or
+                  p["destination_field_offset_from_helper"]!=8 or
+                  p["destination_store_site"]!="0x0000b190" or
+                  p["effective_destination_field_from_get_data_return"]!=12 or
+                  p["static_copy_formula"]!=
+                      "*(get_data(r0)+12) = *(source_ptr+8)" or
+                  p["adjacent_zero_reset_effective_offset"]!=16 or
+                  not p["read_value_may_be_zero"] or
+                  p["nonzero_value_or_real_allocation_size_proven"] or
+                  p["source_pointer_is_user_listener_descriptor_proven"] or
+                  p["record_pointer_identity_in_other_calls_proven"] or
+                  p["all_control_flow_paths_reach_copy_proven"] or
+                  p["camera_runtime_mapping_or_dma_safety_proven"] or
+                  p["camera_flash_permitted"] or
+                  row["actual_source_value_bytes"] is not None or
+                  row["actual_allocated_region_length_bytes"] is not None or
+                  row["live_camera_firmware_modification_permitted"]):
+                  raise SystemExit("REJECT FW native segment source+8 field copy")
+              print("FW114_SEGMENT_EFFECTIVE_SIZE_COPY",fw,
+                    p["static_copy_formula"],"at",p["destination_store_site"],
+                    "source",p["source_load_site"],
+                    "source_positive_UNKNOWN",
+                    "runtime_mapping_bytes_UNVERIFIED")
+          print("PASS real native FW114/115 segment source+8 to get_data+12 "
+                "copy instruction chain; source value remains unknown")
           print('PASS native ELF FW114/115 file-hash and sampled-symbol delta report')
           PY
 
