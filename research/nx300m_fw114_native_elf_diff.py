@@ -30,6 +30,7 @@ import nx300m_fw114_sif_virtual_dispatch as sif_virtual
 import nx300m_fw114_jfif_r6_arg_provenance as jfif_arg
 import nx300m_fw114_hal_table_plus8_audit as hal_plus8
 import nx300m_fw114_photo_ycc_copy_boundary as photo_buffer
+import nx300m_fw114_encoder_format_pack_origins as encoder_pack_origins
 import nx300m_fw114_photo_buffer_lifetime as lifetime
 import nx300m_fw114_cycc_provider_probe as cycc_provider
 import nx300m_fw114_pool_slot8_writer_audit as pool_slot8
@@ -378,6 +379,9 @@ def analyze(archives: dict[str, Path], private_root: Path,
         ycc_copy_boundary = photo_buffer.compare_versions(
             route_paths["1.14"][static_route.PHOTO],
             route_paths["1.15"][static_route.PHOTO])
+        encoder_pack_fields = encoder_pack_origins.compare_versions(
+            route_paths["1.14"][static_route.PHOTO],
+            route_paths["1.15"][static_route.PHOTO])
         memory_lifetime = lifetime.compare_versions(
             route_paths["1.14"][static_route.PHOTO],
             route_paths["1.15"][static_route.PHOTO])
@@ -436,6 +440,7 @@ def analyze(archives: dict[str, Path], private_root: Path,
             "jfif_encode_r6_argument_provenance": jfif_r6_provenance,
             "hal_table_plus8_initialization_witness":hal_producer,
             "fw114_photo_ycc_copy_boundary":ycc_copy_boundary,
+            "fw114_encoder_ycc_format_pack_field_origins":encoder_pack_fields,
             "fw114_photo_buffer_lifetime_branches":memory_lifetime,
             "fw114_pool_slot8_writer_inventory":pool_writers,
             "fw114_pool_mmap_size_contract":arena_size_contract,
