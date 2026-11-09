@@ -9,7 +9,9 @@
  * Returns 1 for Original bypass (no file access or re-encode).
  * Returns -1 on error; never replaces an existing destination.
  * The module_path is a HOST dlopen-able independent film-core DSO.
- * Every Y/C and LUT pointer must refer to independent host-owned copies.
+ * Caller Y/C, LUT, and transfer tables must be readable host allocations.
+ * This adapter takes its own independent bounded snapshot before encoding;
+ * it does NOT prove real camera/DMA pointer ownership or coherency.
  * Caller input job remains unchanged; rgb/rgb_bytes/rgb_stride are ignored
  * because this function allocates exactly one packed RGB888 scanline.
  * Original EXIF APP1 bytes are used only when caller explicitly supplies
