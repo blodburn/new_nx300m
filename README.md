@@ -44,6 +44,14 @@ flashing remain explicitly unsupported.
 
 Host-only [Y/C420 + RGB manifest validation](docs/NX300M_CAPTURE_EVIDENCE_PREFLIGHT_20261102.md) checks three externally copied files, declared geometry, size and independent SHA-256 before experimental color-model analysis. It always refuses to certify same-stage camera provenance, NX300M native layout, ABI or firmware flash safety. Run `python3 research/test_nx300m_capture_manifest_gate.py` to reproduce 17 synthetic cases.
 
+## FW1.14 Y/C-type and pack local branch proof (2026-11-10)
+
+Four native A32 `UXTB r3,r3 → CMP r3,#0 → BEQ` sequences now have
+verified direct skip targets for the 0/1 field writers used by the
+JPEG encoder. This is a **local instruction and conditional-branch
+proof**, not a live pixel layout or a complete native control-flow
+proof. See [FW1.14 JPEG argument provenance](docs/NX300M_FW114_JPEG_YCC_FORMAT_PACK_ORIGINS_20261110.md).
+
 ## FW1.14 native JPEG Y/C type/packing field origins (2026-11-10)
 
 The offline ARM32 audit now traces direct `[fp,-40]` and `[fp,-44]`
