@@ -44,6 +44,16 @@ flashing remain explicitly unsupported.
 
 Host-only [Y/C420 + RGB manifest validation](docs/NX300M_CAPTURE_EVIDENCE_PREFLIGHT_20261102.md) checks three externally copied files, declared geometry, size and independent SHA-256 before experimental color-model analysis. It always refuses to certify same-stage camera provenance, NX300M native layout, ABI or firmware flash safety. Run `python3 research/test_nx300m_capture_manifest_gate.py` to reproduce 17 synthetic cases.
 
+## Host Y/C420 owned-snapshot boundary (2026-11-09)
+
+The independent host JPEG output now makes a bounded (128 MiB aggregate)
+**deep copy of the input Y plane, chroma plane, LUT, and transfer tables**
+before row encoding. This avoids reading caller-managed source allocations
+*after* the snapshot. It does not claim camera pool ownership, coherent DMA
+or verified native Y/C packing. It adds host memory in proportion to Y/C
+inputs; no full-frame RGB buffer is created. See
+[the implementation and limitations](docs/NX300M_HOST_OWNED420_SNAPSHOT_20261109.md).
+
 ## Features
 
 - **13 fixed look selections:** Samsung Original passthrough, 7 experimental Fujifilm-style and 5 Leica-style looks. Brand names describe visual research targets; no manufacturer endorsement or affiliation.
