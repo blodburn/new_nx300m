@@ -43,3 +43,42 @@ or a firmware callback. No device filesystem or vendor API is used.
 **Next real hardware gates:** authorized camera FW identity, recovery proof,
 actual capture pool extents, buffer ownership and sync evidence, Y/C packing,
 camera JPEG/Exif ownership, native ABI and hardware-regression tests.
+
+## Two-stage acquisition and alias guard (2026-11-09)
+
+The host-only API now offers a separate acquisition/render boundary:
+
+```text
+HOST source buffers (stable only during take)
+          |
+          v
+nx_host_owned420_snapshot_take()  -> owned Y/C + LUT + transfer tables
+          |
+          |  caller may release/change source buffers
+          v
+nx_host_freestanding420_jpeg_from_snapshot()
+          |
+          v
+Independent JPEG 4:2:0 (create-only)
+          |
+          v
+nx_host_owned420_snapshot_release()
+```
+
+The snapshot rejects overlap between its destination descriptor, the input
+job descriptor, and all five source spans **before touching the destination**.
+It rejects a second take on a live snapshot rather than leaking the first
+allocation. Snapshot readiness checks structural pointer and geometry
+consistency. Input decode entries are validated **after copying**.
+
+Host regression creates a JPEG from this detached snapshot after overwriting
+all original Y/C and LUT source allocations. The new JPEG must match the
+normal host result byte-for-byte. Failed/stale snapshot inputs must not create
+a JPEG. This tests host lifetime separation, **not** DMA coherency, actual
+NX300M buffer format, or camera firmware compatibility.
+
+### Explicit limitations
+
+The snapshot cannot authenticate source pointer ownership or detect a
+concurrent write during the initial memory copy. There is no physical
+camera or firmware-side acquisition code. Device flash remains **NO-GO**.
