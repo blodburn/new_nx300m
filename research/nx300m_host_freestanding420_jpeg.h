@@ -3,7 +3,7 @@
  */
 #ifndef NX300M_HOST_FREESTANDING420_JPEG_H
 #define NX300M_HOST_FREESTANDING420_JPEG_H
-#include "nx300m_freestanding_owned420_bridge.h"
+#include "nx300m_host_owned420_snapshot.h"
 
 /* Returns 0 only after a new JPEG is atomically published.
  * Returns 1 for Original bypass (no file access or re-encode).
@@ -17,6 +17,21 @@
  * Original EXIF APP1 bytes are used only when caller explicitly supplies
  * them. Missing/invalid EXIF never causes synthesized camera metadata.
  */
+/* Two-stage HOST simulation:
+ * 1. nx_host_owned420_snapshot_take() copies independently owned Y/C/LUT.
+ * 2. The caller may release/change the original buffers.
+ * 3. This function encodes from the still-live, ready snapshot.
+ * The caller must not mutate/release that snapshot during encoding.
+ * Return 0 on new JPEG, -1 on error/no overwrite.
+ * No camera capture, DMA synchronization, or native JPEG hook is supplied.
+ */
+int nx_host_freestanding420_jpeg_from_snapshot(
+    const char *module_path,
+    const nx_host_owned420_snapshot *snapshot,
+    const char *new_jpeg_path,
+    const uint8_t *original_exif_app1,
+    size_t exif_bytes);
+
 int nx_host_freestanding420_jpeg_copy(
     const char *module_path,
     const nx_film_owned420_hypothesis_job *copied_input,
