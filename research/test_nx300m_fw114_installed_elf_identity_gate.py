@@ -131,20 +131,19 @@ class InstalledLibraryIdentity(unittest.TestCase):
             report + "photo_bytes=256\n",
             report.replace("all_four_files_read=yes",
                            "all_four_files_read=no"),
-            report.replace("photo_bytes=256",
-                           "photo_bytes=257"),
             report.replace("photo_sha256=",
                            "photo_sha256=z"),
         ):
             with self.subTest(start=modified[:50]):
                 with self.assertRaises(ValueError):
-                    # One size mutation is still syntactically valid but
-                    # must not match the independently hashed reference.
-                    if "photo_bytes=257" in modified:
-                        v = gate.inspect(modified, self.reference)
-                        self.assertEqual(v["comparison"], "DIFFERENT_BYTES")
-                    else:
-                        gate.parse_report(modified)
+                    gate.parse_report(modified)
+        # Changing one reported file length remains syntactically valid,
+        # but the offline ELF-byte comparison must reject its equality.
+        changed = report.replace("photo_bytes=256", "photo_bytes=257")
+        self.assertEqual(
+            gate.inspect(changed, self.reference)["comparison"],
+            "DIFFERENT_BYTES"
+        )
 
     def test_cli_0_match_3_mismatch_2_invalid(self):
         report = self.root / "report.txt"
