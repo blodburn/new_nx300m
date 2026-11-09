@@ -234,6 +234,11 @@ static void check_all_committed_looks(const char *module){
  nx_preview_processor gamma;
  assert(nx_preview_init(&gamma)==0);
  nx_film_owned420_hypothesis_job input=input_job(&gamma);
+ /* No caller LUT is provided: the shutter MUST build the film transform
+  * from the selected menu entry, not a fallback preset table. */
+ input.lut=NULL;
+ input.lut_nodes=0u;
+ input.grid=0u;
  uint8_t source_y[sizeof(y_plane)],source_c[sizeof(c_plane)];
  nx_rgb12 source_lut[sizeof(lut2)/sizeof(lut2[0])];
  memcpy(source_y,y_plane,sizeof(y_plane));
@@ -306,7 +311,7 @@ static void check_all_committed_looks(const char *module){
   }
  free(reference_lut);
  printf("PASS committed LUT18-to-JPEG: %u distinct menu looks, "
-        "exact factory LUT parity, caller LUT ignored\n",count);
+        "exact factory LUT parity, NO caller LUT required\n",count);
 }
 int main(int argc,char **argv){
  if(argc!=2||!argv[1])return 2;
