@@ -44,6 +44,15 @@ flashing remain explicitly unsupported.
 
 Host-only [Y/C420 + RGB manifest validation](docs/NX300M_CAPTURE_EVIDENCE_PREFLIGHT_20261102.md) checks three externally copied files, declared geometry, size and independent SHA-256 before experimental color-model analysis. It always refuses to certify same-stage camera provenance, NX300M native layout, ABI or firmware flash safety. Run `python3 research/test_nx300m_capture_manifest_gate.py` to reproduce 17 synthetic cases.
 
+## FW1.14 native JPEG Y/C type/packing field origins (2026-11-10)
+
+The offline ARM32 audit now traces direct `[fp,-40]` and `[fp,-44]`
+field-store candidates feeding native `DscImage::EncodeYCC` arguments
+`eImgYCCType` and `eImgYCCPackType`. It checks exact FW1.14/1.15
+opcode marshalling and reports ambiguous or unknown runtime sources
+without assuming that camera Y/C memory is BT.601 NV12 or DMA-safe.
+See [native field-source evidence](docs/NX300M_FW114_JPEG_YCC_FORMAT_PACK_ORIGINS_20261110.md).
+
 ## Host shutter RAW+JPEG preflight acquisition (2026-11-09)
 
 The committed Film Simulator Y/C420 host shutter now deep-copies the
