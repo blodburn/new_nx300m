@@ -16,9 +16,13 @@ typedef struct {
     nx_save_mode mode;
     const nx_tizen_film_controller *film_controller;
     /* Must match COMMITTED selection, not the unconfirmed UI preview.
-     * This is an association check, NOT proof of genuine Fuji/Leica LUT.
+     * This is an association check, NOT proof of Fuji/Leica calibration.
+     * Pixel LUT values are GENERATED from that confirmed preset by this
+     * adapter and are NOT taken from copied_film_job->lut.
      */
     unsigned lut_preset_id;
+    /* HOST copied Y/C and transfer tables. The lut, lut_nodes and grid
+     * fields are ignored/replaced by the committed preset's LUT18. */
     const nx_film_owned420_hypothesis_job *copied_film_job;
     const char *freestanding_module_path;
     const char *new_film_jpeg_path;
@@ -40,7 +44,9 @@ typedef struct {
  * RAW+JPEG intentionally saves RAW first. If JPEG then fails, returns -1
  * and raw_saved=1. No rollback of a completed RAW side effect.
  * No full-frame RGB staging, no per-preset strength/Picture Wizard rewrite,
- * no multi-JPEG sidecars. The host JPEG writer is create-only.
+ * no multi-JPEG sidecars. JPEG uses the built-in, fixed LUT18 for the
+ * committed selection; caller-provided LUT values cannot override it.
+ * The host JPEG writer is create-only.
  */
 int nx_host_shutter420_save_committed(
     const nx_host_shutter420_request *request,
