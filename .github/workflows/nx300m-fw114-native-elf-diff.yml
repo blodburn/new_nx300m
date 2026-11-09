@@ -20,6 +20,8 @@ on:
       - 'research/nx300m_fw114_hal_table_plus8_audit.py'
       - 'research/test_nx300m_fw114_hal_table_plus8_audit.py'
       - 'research/nx300m_fw114_photo_ycc_copy_boundary.py'
+      - 'research/nx300m_fw114_encoder_format_pack_origins.py'
+      - 'research/test_nx300m_fw114_encoder_format_pack_origins.py'
       - 'research/test_nx300m_fw114_photo_ycc_copy_boundary.py'
       - 'research/nx300m_fw114_photo_buffer_lifetime.py'
       - 'research/test_nx300m_fw114_photo_buffer_lifetime.py'
@@ -79,6 +81,8 @@ on:
       - 'research/nx300m_fw114_hal_table_plus8_audit.py'
       - 'research/test_nx300m_fw114_hal_table_plus8_audit.py'
       - 'research/nx300m_fw114_photo_ycc_copy_boundary.py'
+      - 'research/nx300m_fw114_encoder_format_pack_origins.py'
+      - 'research/test_nx300m_fw114_encoder_format_pack_origins.py'
       - 'research/test_nx300m_fw114_photo_ycc_copy_boundary.py'
       - 'research/nx300m_fw114_photo_buffer_lifetime.py'
       - 'research/test_nx300m_fw114_photo_buffer_lifetime.py'
@@ -236,6 +240,29 @@ jobs:
               not route["capture_and_photo_files_sha256_identical_between_114_and_115"]
           ):
               raise SystemExit("REJECT static callsite file proof absent")
+          native_pack=report["fw114_encoder_ycc_format_pack_field_origins"]
+          if not native_pack["same_encoder_body_bytes"] or (
+              native_pack["firmware_flash_permitted"] or
+              native_pack["actual_ycc_format_and_pack_runtime_values_proven"]
+          ):
+              raise SystemExit("REJECT encoder format/pack source evidence")
+          for version in ("fw114","fw115"):
+              proof=native_pack[version]
+              fields=proof["fields"]
+              if (not proof["jpeg_callsite_arg_marshalling_verified"] or
+                  proof["live_camera_capture_layout_proven"] or
+                  proof["native_camera_dma_ownership_proven"] or
+                  set(fields)!={"eImgYCCType","eImgYCCPackType"}):
+                  raise SystemExit("REJECT invalid YCC/pack ARM field evidence")
+              for field in fields:
+                  value=fields[field]
+                  if (value["actual_native_enum_value_proven"] or
+                      value["indirect_alias_writers_excluded"]):
+                      raise SystemExit("REJECT overstated native enum source")
+                  print("FW114_ENCODER_FIELD",version,field,
+                        "fp_stack_offset",value["stack_offset_from_fp"],
+                        "direct_store_candidates",value["direct_writer_count"],
+                        "runtime_value_known",value["actual_native_enum_value_proven"])
           for v in ("fw114","fw115"):
               p=route[v]
               if p["capture_recipe_calls_verified"]!=9 or (
