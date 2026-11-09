@@ -36,6 +36,15 @@ static void verify_detachment(void){
     const size_t yn=(H-1u)*YS+W;
     const size_t cn=(H/2u-1u)*CS+W;
     assert(nx_host_owned420_snapshot_take(&s,&j)==0);
+    assert(nx_host_owned420_snapshot_ready(&s)==1);
+    /* A second take may not drop the first owned allocation. */
+    const uint8_t *first_owned_y=s.owned_y;
+    assert(nx_host_owned420_snapshot_take(&s,&j)==-1);
+    assert(s.owned_y==first_owned_y&&nx_host_owned420_snapshot_ready(&s));
+    s.job.y_bytes--;
+    assert(!nx_host_owned420_snapshot_ready(&s));
+    s.job.y_bytes++;
+    assert(nx_host_owned420_snapshot_ready(&s));
     assert(s.job.y!=j.y&&s.job.chroma!=j.chroma);
     assert(s.job.lut!=j.lut&&s.job.decode_srgb!=j.decode_srgb);
     assert(s.job.encode_srgb!=j.encode_srgb);
@@ -96,9 +105,28 @@ static void verify_invalid_metadata(void){
     assert(nx_host_owned420_snapshot_take(NULL,NULL)==-1);
     puts("PASS 13 fail-closed metadata/bounds/alias/budget cases");
 }
+static void verify_aliased_output_is_never_modified(void){
+    nx_film_owned420_hypothesis_job j=fixture();
+    const unsigned prior_id=j.copy_declaration;
+    /* The original implementation memset(out) before checking this alias. */
+    nx_host_owned420_snapshot *job_alias=(nx_host_owned420_snapshot *)(void *)&j;
+    assert(nx_host_owned420_snapshot_take(job_alias,&j)==-1);
+    assert(j.copy_declaration==prior_id);
+    assert(j.y==y&&j.chroma==c);
+
+    nx_host_owned420_snapshot live={0};
+    j.y=(const uint8_t *)&live;
+    j.y_bytes=YS*H;
+    assert(nx_host_owned420_snapshot_take(&live,&j)==-1);
+    assert(live.owned_y==NULL&&live.job.y==NULL);
+    assert(live.owned_lut==NULL&&live.owned_decode==NULL);
+    puts("PASS alias to input job/output buffer rejected before all writes");
+}
+
 int main(void){
     verify_detachment();
     verify_invalid_metadata();
+    verify_aliased_output_is_never_modified();
     puts("PASS host-owned420 snapshot boundary; camera memory/DMA unverified");
     return 0;
 }

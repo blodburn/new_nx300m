@@ -98,12 +98,14 @@ static void run_one(const char *module,unsigned n,unsigned order){
  nx_preview_processor preview;
  assert(nx_preview_init(&preview)==0);
  nx_film_owned420_hypothesis_job j=new_job(n,order,lut,&preview);
- char result[160],oracle[160];
+ char result[160],oracle[160],detached[160];
  assert(snprintf(result,sizeof(result),
     "outputs/strip_jpeg_%ld_%u_%u.jpg",(long)getpid(),n,order)>0);
  assert(snprintf(oracle,sizeof(oracle),
     "outputs/strip_jpeg_ref_%ld_%u_%u.jpg",(long)getpid(),n,order)>0);
- assert(!file_exists(result)&&!file_exists(oracle));
+ assert(snprintf(detached,sizeof(detached),
+    "outputs/strip_detached_%ld_%u_%u.jpg",(long)getpid(),n,order)>0);
+ assert(!file_exists(result)&&!file_exists(oracle)&&!file_exists(detached));
  const int include_exif=(n==65u);
  const uint8_t *app1=include_exif?exif:NULL;
  const size_t exif_len=include_exif?sizeof(exif):0u;
@@ -115,6 +117,21 @@ static void run_one(const char *module,unsigned n,unsigned order){
       NX_HOST420_CBCR_EXPERIMENTAL:NX_HOST420_CRCB_EXPERIMENTAL,
     NX_420_BT601_FULL,lut,n,0,oracle,app1,exif_len)==0);
  identical_jpeg(result,oracle,include_exif);
+ /* Capture independent owned bytes now. Release/mutate caller memory before
+  * calling the row/JPEG worker, as a real owner hand-off would require.
+  * This remains a synthetic HOST test, not actual camera synchronization. */
+ nx_host_owned420_snapshot snapshot={0};
+ assert(nx_host_owned420_snapshot_take(&snapshot,&j)==0);
+ assert(nx_host_owned420_snapshot_ready(&snapshot));
+ memset(yy,0,sizeof(yy));memset(cc,0,sizeof(cc));
+ memset(lut,0,lut_size);
+ assert(nx_host_freestanding420_jpeg_from_snapshot(
+    module,&snapshot,detached,app1,exif_len)==0);
+ nx_host_owned420_snapshot_release(&snapshot);
+ identical_jpeg(result,detached,include_exif);
+ memcpy(yy,saved_y,sizeof(yy));
+ memcpy(cc,saved_c,sizeof(cc));
+ memcpy(lut,lut_copy,lut_size);
  /* Output create-only: second attempt must fail, not replace content. */
  assert(nx_host_freestanding420_jpeg_copy(module,&j,0,result,app1,
                                          exif_len)==-1);
@@ -122,7 +139,7 @@ static void run_one(const char *module,unsigned n,unsigned order){
  assert(memcmp(saved_y,yy,sizeof(yy))==0);
  assert(memcmp(saved_c,cc,sizeof(cc))==0);
  assert(memcmp(lut_copy,lut,lut_size)==0);
- assert(unlink(result)==0&&unlink(oracle)==0);
+ assert(unlink(result)==0&&unlink(oracle)==0&&unlink(detached)==0);
  free(lut_copy);free(lut);
  printf("PASS host row-strip JPEG: LUT=%u order=%u, byte-equal "
         "4:2:0, EXIF=%d, no-overwrite, immutable inputs\n",
@@ -163,7 +180,19 @@ static void reject_cases(const char *module){
     module,&j,0,path,forged_exif,sizeof(forged_exif))==-1);
  assert(!file_exists(path));
  free(lut);
- puts("PASS host strip JPEG fail closed: Original, metadata, module, EXIF");
+ nx_host_owned420_snapshot snapshot={0};
+ assert(nx_host_owned420_snapshot_take(&snapshot,&j)==0);
+ snapshot.job.y_bytes--;
+ assert(nx_host_freestanding420_jpeg_from_snapshot(
+    module,&snapshot,path,NULL,0)==-1);
+ assert(!file_exists(path));
+ snapshot.job.y_bytes++;
+ assert(nx_host_owned420_snapshot_ready(&snapshot));
+ nx_host_owned420_snapshot_release(&snapshot);
+ assert(nx_host_freestanding420_jpeg_from_snapshot(
+    module,&snapshot,path,NULL,0)==-1);
+ assert(!file_exists(path));
+ puts("PASS host strip JPEG fail closed: Original, metadata, module, EXIF and stale snapshots");
 }
 int main(int argc,char **argv){
  assert(argc==2&&argv[1]);

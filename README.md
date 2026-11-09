@@ -46,6 +46,11 @@ Host-only [Y/C420 + RGB manifest validation](docs/NX300M_CAPTURE_EVIDENCE_PREFLI
 
 ## Host Y/C420 owned-snapshot boundary (2026-11-09)
 
+The host JPEG path now also supports a two-stage snapshot-to-JPEG API. Its
+regression produces byte-identical JPEG data after caller Y/C and LUT buffers
+are changed. Input/output aliases and reuse of live snapshots are rejected.
+This is **not** a camera-owned DMA buffer handoff.
+
 The independent host JPEG output now makes a bounded (128 MiB aggregate)
 **deep copy of the input Y plane, chroma plane, LUT, and transfer tables**
 before row encoding. This avoids reading caller-managed source allocations
