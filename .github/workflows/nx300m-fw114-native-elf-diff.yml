@@ -254,14 +254,25 @@ jobs:
                   proof["native_camera_dma_ownership_proven"] or
                   set(fields)!={"eImgYCCType","eImgYCCPackType"}):
                   raise SystemExit("REJECT invalid YCC/pack ARM field evidence")
+              pinned=proof["actual_static_direct_writer_pins"]
+              if not pinned["six_native_opcodes_and_preceding_immediates_pinned"] or (
+                  pinned["source_branch_path_exhaustive"] or
+                  pinned["camera_firmware_flash_permitted"]
+              ):
+                  raise SystemExit("REJECT YCC/pack direct ARM pin results")
               for field in fields:
                   value=fields[field]
+                  direct=pinned["pinned_fw114_115_known_direct_stores"][field]
                   if (value["actual_native_enum_value_proven"] or
-                      value["indirect_alias_writers_excluded"]):
-                      raise SystemExit("REJECT overstated native enum source")
+                      value["indirect_alias_writers_excluded"] or
+                      direct["direct_store_count"]!=3 or
+                      not direct["direct_store_values_within_zero_or_one"] or
+                      direct["runtime_path_values_or_precedence_proven"]):
+                      raise SystemExit("REJECT overstated or changed native enum")
                   print("FW114_ENCODER_FIELD",version,field,
                         "fp_stack_offset",value["stack_offset_from_fp"],
-                        "direct_store_candidates",value["direct_writer_count"],
+                        "direct_stores",direct["verified_direct_store_sites"],
+                        "direct_values",direct["statically_assigned_immediate_candidates"],
                         "runtime_value_known",value["actual_native_enum_value_proven"])
           for v in ("fw114","fw115"):
               p=route[v]
