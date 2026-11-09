@@ -100,6 +100,30 @@ class EncoderYccFieldOriginTests(unittest.TestCase):
         self.assertFalse(ycc["single_direct_writer_candidate"])
         self.assertFalse(ycc["actual_native_enum_value_proven"])
 
+    def test_six_pinned_real_native_mov_and_str_pairs(self):
+        words = fixture()
+        for site in (0x34b70, 0x34b74, 0x34b78, 0x34b7c):
+            words[(site-source.START)//4] = NOP
+        for name, entries in source.PINNED_DIRECT_WRITERS.items():
+            offset = 0xe50b3028 if name == "eImgYCCType" else 0xe50b302c
+            for site, value in entries:
+                words[(site-4-source.START)//4] = 0xe3a03000 | value
+                words[(site-source.START)//4] = offset
+        proof = source.trace_field_origins(tuple(words))
+        pins = source.pin_known_arm_direct_writer_values(proof)
+        self.assertTrue(pins["six_native_opcodes_and_preceding_immediates_pinned"])
+        for name, data in pins["pinned_fw114_115_known_direct_stores"].items():
+            self.assertEqual(data["direct_store_count"], 3)
+            self.assertTrue(data["direct_store_values_within_zero_or_one"])
+            self.assertFalse(data["runtime_path_values_or_precedence_proven"])
+        # One changed literal must fail the strict real-ELF pin.
+        pc = 0x34c3c
+        words[(pc-source.START)//4] = 0xe3a03002
+        with self.assertRaisesRegex(ValueError, "Changed actual"):
+            source.pin_known_arm_direct_writer_values(
+                source.trace_field_origins(tuple(words))
+            )
+
     def test_changed_native_jpeg_argument_load_rejected(self):
         words = fixture()
         words[(0x34d50-source.START)//4] = 0xe51b3028
