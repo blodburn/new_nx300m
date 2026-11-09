@@ -216,7 +216,7 @@ static void run_case(unsigned scenario){
  if(scenario==6){
   FILE *bad=fopen(config_filename,"wb");
   assert(bad);
-  assert(fputs("NX_FILM_MENU 2\\npreset=101\\ntrailer=1\\n",bad)>0);
+  assert(fputs("NX_FILM_MENU 2\npreset=101\ntrailer=1\n",bad)>0);
   assert(fclose(bad)==0);
  }
  char *args[]={(char *)"nx300m-efl-host-test",NULL};
