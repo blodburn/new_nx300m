@@ -202,10 +202,117 @@ static void check_film(const char *module){
  puts("PASS: committed Film 100, preview 101 ignored, single JPEG, "
       "RAW+JPEG, no-overwrite, immutable planes and LUT");
 }
+
+/* For every real non-Original menu ID, prove JPEG bytes originate from the
+ * factory-built fixed 18^3 LUT, not the arbitrary LUT pointer supplied by
+ * the caller. This is an offline HOST geometry, never an NX300M device.
+ */
+static uint64_t jpg_fingerprint(const char *path){
+ FILE *fp=fopen(path,"rb");assert(fp);
+ uint64_t hash=UINT64_C(14695981039346656037);
+ int value;unsigned total=0u;
+ while((value=fgetc(fp))!=EOF){
+  hash^=(uint8_t)value;
+  hash*=UINT64_C(1099511628211);
+  total++;
+ }
+ assert(!ferror(fp)&&fclose(fp)==0&&total>200u);
+ return hash;
+}
+static void assert_same_jpeg_bytes(const char *a,const char *b){
+ FILE *x=fopen(a,"rb"),*y=fopen(b,"rb");assert(x&&y);
+ for(;;){
+  const int ch=fgetc(x),other=fgetc(y);
+  assert(ch==other);
+  if(ch==EOF)break;
+ }
+ assert(!ferror(x)&&!ferror(y));
+ assert(fclose(x)==0&&fclose(y)==0);
+}
+static void check_all_committed_looks(const char *module){
+ setup_planes();setup_lut();
+ nx_preview_processor gamma;
+ assert(nx_preview_init(&gamma)==0);
+ nx_film_owned420_hypothesis_job input=input_job(&gamma);
+ uint8_t source_y[sizeof(y_plane)],source_c[sizeof(c_plane)];
+ nx_rgb12 source_lut[sizeof(lut2)/sizeof(lut2[0])];
+ memcpy(source_y,y_plane,sizeof(y_plane));
+ memcpy(source_c,c_plane,sizeof(c_plane));
+ memcpy(source_lut,lut2,sizeof(lut2));
+ unsigned ids[13]={0};
+ uint64_t hashes[13]={0};
+ unsigned count=0u;
+ nx_rgb12 *reference_lut=malloc((size_t)NX_LUT_COUNT*sizeof(*reference_lut));
+ assert(reference_lut);
+ for(size_t index=0;index<nx_film_count();index++){
+  const nx_film_preset *p=nx_film_by_index(index);
+  assert(p);
+  if(p->id==0u)continue;
+  assert(count<13u);
+  ids[count]=p->id;
+
+  nx_tizen_film_controller ctrl;
+  nx_tizen_film_controller_init(&ctrl,p->id,NULL,NULL);
+  calls ctx={0};
+  nx_host_shutter420_request req=base_req(&ctx);
+  req.film_controller=&ctrl;
+  req.lut_preset_id=p->id;
+  req.copied_film_job=&input;
+  req.freestanding_module_path=module;
+  req.original_exif_app1=app1;
+  req.exif_bytes=sizeof(app1);
+  char output[160],oracle[160];
+  assert(snprintf(output,sizeof(output),
+       "outputs/selected_%ld_%u.jpg",(long)getpid(),p->id)>0);
+  assert(snprintf(oracle,sizeof(oracle),
+       "outputs/selected_oracle_%ld_%u.jpg",(long)getpid(),p->id)>0);
+  assert(!exists(output)&&!exists(oracle));
+  req.new_film_jpeg_path=output;
+
+  nx_shutter_result result;
+  assert(nx_host_shutter420_save_committed(&req,&result)==0);
+  assert(result.applied_film==1u&&result.jpeg_saved==1u);
+  assert(result.selected_film_id==p->id);
+  assert(ctx.raw_calls==0u&&ctx.original_calls==0u);
+  is_jpeg(output);
+
+  nx_film_menu expected_menu;
+  nx_film_menu_init(&expected_menu);
+  expected_menu.selected_id=p->id;
+  assert(nx_film_lut_for_menu(&expected_menu,reference_lut)==0);
+  nx_film_owned420_hypothesis_job oracle_job=input;
+  oracle_job.lut=reference_lut;
+  oracle_job.lut_nodes=NX_LUT_COUNT;
+  oracle_job.grid=NX_LUT_GRID;
+  assert(nx_host_freestanding420_jpeg_copy(
+     module,&oracle_job,0,oracle,app1,sizeof(app1))==0);
+  assert_same_jpeg_bytes(output,oracle);
+  hashes[count]=jpg_fingerprint(output);
+  assert(memcmp(y_plane,source_y,sizeof(y_plane))==0);
+  assert(memcmp(c_plane,source_c,sizeof(c_plane))==0);
+  assert(memcmp(lut2,source_lut,sizeof(lut2))==0);
+  assert(unlink(output)==0&&unlink(oracle)==0);
+  count++;
+ }
+ assert(count==nx_film_count()-1u);
+ for(unsigned i=0;i<count;i++)
+  for(unsigned j=i+1u;j<count;j++){
+   /* The 12 fixed looks must result in distinguishable JPEG bitstreams
+    * when the source frame and EXIF are held constant. */
+   if(hashes[i]==hashes[j]){
+    fprintf(stderr,"IDENTICAL LOOKS: %u / %u\n",ids[i],ids[j]);
+    assert(hashes[i]!=hashes[j]);
+   }
+  }
+ free(reference_lut);
+ printf("PASS committed LUT18-to-JPEG: %u distinct menu looks, "
+        "exact factory LUT parity, caller LUT ignored\n",count);
+}
 int main(int argc,char **argv){
  if(argc!=2||!argv[1])return 2;
  check_original_and_raw();
  check_film(argv[1]);
+ check_all_committed_looks(argv[1]);
  puts("PASS NX300M host-only committed film-to-shutter route; "
       "NO firmware / DMA / native JPEG integration");
  return 0;
