@@ -7,30 +7,25 @@ static void test_corrupt_config_never_changes_selection(void){
     const char *path="outputs/TEST_invalid_film_selection.cfg";
     static const char *bad[]={
         "",
-        "NX_FILM_MENU 2\\npreset=100", /* truncated last line */
-        "NX_FILM_MENU 2\\npreset=100\\ntrailer=1\\n",
-        "NX_FILM_MENU 2\\npreset=100\\nstrength=0.5\\n",
-        "NX_FILM_MENU 2\\npreset=999\\n",
-        "NX_FILM_MENU 2\\npreset=42949672960\\n",
-        "NX_FILM_MENU 2\\npreset=+100\\n",
-        "NX_FILM_MENU 2\\npreset=100x\\n",
-        "NX_FILM_MENU 2\\npreset= 100\\n",
-        "NX_FILM_MENU 1\\npreset=304\\nstrength=nan\\n",
-        "NX_FILM_MENU 1\\npreset=304\\nstrength=1e999\\n",
-        "NX_FILM_MENU 1\\npreset=304\\nstrength=0.5\\njunk\\n",
-        "NX_FILM_MENU 3\\npreset=100\\n",
-        "NX_FILM_MENU 2\\npreset=100\\n\\n"
+        "NX_FILM_MENU 2\npreset=100", /* truncated last line */
+        "NX_FILM_MENU 2\npreset=100\ntrailer=1\n",
+        "NX_FILM_MENU 2\npreset=100\nstrength=0.5\n",
+        "NX_FILM_MENU 2\npreset=999\n",
+        "NX_FILM_MENU 2\npreset=42949672960\n",
+        "NX_FILM_MENU 2\npreset=+100\n",
+        "NX_FILM_MENU 2\npreset=100x\n",
+        "NX_FILM_MENU 2\npreset= 100\n",
+        "NX_FILM_MENU 1\npreset=304\nstrength=nan\n",
+        "NX_FILM_MENU 1\npreset=304\nstrength=1e999\n",
+        "NX_FILM_MENU 1\npreset=304\nstrength=0.5\njunk\n",
+        "NX_FILM_MENU 3\npreset=100\n",
+        "NX_FILM_MENU 2\npreset=100\n\n"
     };
     for(size_t i=0;i<sizeof(bad)/sizeof(bad[0]);i++){
         FILE *f=fopen(path,"wb");
         assert(f);
-        /* Convert \\n marker strings into actual line boundaries. */
-        for(const char *p=bad[i];*p;p++){
-            if(p[0]=='\\\\'&&p[1]=='n'){
-                assert(fputc('\\n',f)!=EOF);
-                p++;
-            }else assert(fputc((unsigned char)*p,f)!=EOF);
-        }
+        const size_t n=strlen(bad[i]);
+        assert(fwrite(bad[i],1,n,f)==n);
         assert(fclose(f)==0);
         nx_film_menu m;
         nx_film_menu_init(&m);
