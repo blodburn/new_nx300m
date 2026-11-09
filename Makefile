@@ -146,6 +146,7 @@ full20mp-test: freestanding-test
 	$(CC) -std=c11 -O2 -Wall -Wextra -Werror -Iresearch \
 	  research/test_nx300m_full20mp_stream_exif.c \
 	  research/nx300m_host_freestanding420_jpeg.c \
+	  research/nx300m_host_owned420_snapshot.c \
 	  research/nx300m_host_jpeg_sink.c \
 	  research/nx300m_preview_rgb.c \
 	  research/nx300m_lut18.c -ldl -lm \
