@@ -24,11 +24,18 @@ static const uint8_t app1[]={
 typedef struct {
  unsigned raw_calls, original_calls;
  int raw_failure, original_failure;
+ int mutate_yc_on_raw;
 } calls;
 static int raw_save(const void *p,size_t n,void *user){
  calls *c=user;
  assert(n==sizeof(raw_data)&&memcmp(p,raw_data,n)==0);
  c->raw_calls++;
+ /* Simulate a caller-managed capture buffer released or reused as soon
+  * as the RAW writer callback starts. The JPEG must use a prior snapshot. */
+ if(c->mutate_yc_on_raw){
+  memset(y_plane,0,sizeof(y_plane));
+  memset(c_plane,0,sizeof(c_plane));
+ }
  return c->raw_failure?-1:0;
 }
 static int original_save(void *user){
@@ -263,6 +270,74 @@ static void assert_same_jpeg_bytes(const char *a,const char *b){
  assert(!ferror(x)&&!ferror(y));
  assert(fclose(x)==0&&fclose(y)==0);
 }
+static void check_snapshot_before_raw(const char *module){
+ setup_planes();setup_lut();
+ nx_preview_processor gamma;
+ assert(nx_preview_init(&gamma)==0);
+ nx_film_owned420_hypothesis_job job=input_job(&gamma);
+ job.lut=NULL;job.lut_nodes=0u;job.grid=0u;
+
+ nx_tizen_film_controller ctrl;
+ nx_tizen_film_controller_init(&ctrl,100u,NULL,NULL);
+ calls ctx={0};
+ nx_host_shutter420_request req=base_req(&ctx);
+ req.film_controller=&ctrl;
+ req.copied_film_job=&job;
+ req.lut_preset_id=100u;
+ req.freestanding_module_path=module;
+ req.original_exif_app1=app1;
+ req.exif_bytes=sizeof(app1);
+ char baseline[160],altered[160],failed[160];
+ assert(snprintf(baseline,sizeof(baseline),
+     "outputs/preflight_baseline_%ld.jpg",(long)getpid())>0);
+ assert(snprintf(altered,sizeof(altered),
+     "outputs/preflight_mutated_%ld.jpg",(long)getpid())>0);
+ assert(snprintf(failed,sizeof(failed),
+     "outputs/preflight_reject_%ld.jpg",(long)getpid())>0);
+ assert(!exists(baseline)&&!exists(altered)&&!exists(failed));
+ nx_shutter_result result;
+ req.mode=NX_SAVE_JPEG_ONLY;
+ req.new_film_jpeg_path=baseline;
+ assert(nx_host_shutter420_save_committed(&req,&result)==0);
+ is_jpeg(baseline);
+
+ /* RAW callback overwrites the source Y/C allocations in place. The
+  * previously acquired film snapshot must still produce identical JPEG. */
+ ctx.mutate_yc_on_raw=1;
+ req.mode=NX_SAVE_RAW_AND_JPEG;
+ req.new_film_jpeg_path=altered;
+ assert(nx_host_shutter420_save_committed(&req,&result)==0);
+ assert(ctx.raw_calls==1u&&ctx.original_calls==0u);
+ assert(result.raw_saved==1u&&result.jpeg_saved==1u);
+ assert_same_jpeg_bytes(baseline,altered);
+
+ /* Invalid source input must be refused BEFORE the RAW callback fires. */
+ setup_planes();
+ ctx.mutate_yc_on_raw=0;
+ nx_film_owned420_hypothesis_job bad=job;
+ bad.y_bytes=YS;
+ req.copied_film_job=&bad;
+ req.new_film_jpeg_path=failed;
+ assert(nx_host_shutter420_save_committed(&req,&result)==-1);
+ assert(ctx.raw_calls==1u);
+ assert(result.raw_saved==0u&&result.jpeg_saved==0u);
+ assert(!exists(failed));
+
+ /* Decoder table input is also validated before the RAW side effect. */
+ uint16_t corrupt_decode[256];
+ memcpy(corrupt_decode,gamma.decode_srgb,sizeof(corrupt_decode));
+ corrupt_decode[40]=4096u;
+ bad=job;
+ bad.decode_srgb=corrupt_decode;
+ req.copied_film_job=&bad;
+ assert(nx_host_shutter420_save_committed(&req,&result)==-1);
+ assert(ctx.raw_calls==1u);
+ assert(!exists(failed));
+
+ assert(unlink(baseline)==0&&unlink(altered)==0);
+ puts("PASS shutter preflight before RAW: no partial RAW on invalid Y/C; "
+      "source reuse during RAW does not change JPEG");
+}
 static void check_all_committed_looks(const char *module){
  setup_planes();setup_lut();
  nx_preview_processor gamma;
@@ -388,6 +463,7 @@ int main(int argc,char **argv){
  if(argc!=2||!argv[1])return 2;
  check_original_and_raw();
  check_film(argv[1]);
+ check_snapshot_before_raw(argv[1]);
  check_all_committed_looks(argv[1]);
  puts("PASS NX300M host-only committed film-to-shutter route; "
       "NO firmware / DMA / native JPEG integration");

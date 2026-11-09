@@ -44,6 +44,16 @@ flashing remain explicitly unsupported.
 
 Host-only [Y/C420 + RGB manifest validation](docs/NX300M_CAPTURE_EVIDENCE_PREFLIGHT_20261102.md) checks three externally copied files, declared geometry, size and independent SHA-256 before experimental color-model analysis. It always refuses to certify same-stage camera provenance, NX300M native layout, ABI or firmware flash safety. Run `python3 research/test_nx300m_capture_manifest_gate.py` to reproduce 17 synthetic cases.
 
+## Host shutter RAW+JPEG preflight acquisition (2026-11-09)
+
+The committed Film Simulator Y/C420 host shutter now deep-copies the
+source frame and film LUT **before calling the RAW writer**. Invalid Y/C
+geometry or transfer tables cannot cause a partial RAW save, and a RAW
+callback reusing source planes cannot change the subsequent host JPEG.
+A later JPEG output failure can still leave RAW saved: there is no atomic
+two-file transaction. Camera DMA buffers and on-device shutter hooks
+remain unverified. See [regression and limits](docs/NX300M_HOST_SHUTTER_PREFLIGHT_BEFORE_RAW_20261109.md).
+
 ## Owner-authorized installed camera ELF identity check (2026-11-09)
 
 Added a passive shell probe to read SHA-256 for four fixed camera libraries

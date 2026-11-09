@@ -41,12 +41,19 @@ typedef struct {
 
 /* 0: all requested outputs complete; -1: invalid input or failed save.
  * Uses nx_shutter_result: flags are set only AFTER callback success.
- * RAW+JPEG intentionally saves RAW first. If JPEG then fails, returns -1
- * and raw_saved=1. No rollback of a completed RAW side effect.
- * No full-frame RGB staging, no per-preset strength/Picture Wizard rewrite,
- * no multi-JPEG sidecars. JPEG uses the built-in, fixed LUT18 for the
- * committed selection; caller-provided LUT values cannot override it.
- * The host JPEG writer is create-only.
+ * For a non-Original film, validates and copies Y/C, LUT and transfer
+ * tables into independent HOST allocations BEFORE calling write_raw().
+ * Invalid film metadata therefore cannot leave a RAW-only side effect.
+ * The RAW callback may reuse its original Y/C allocations without changing
+ * JPEG pixels; the selected film ID and pre-RAW frame are pinned together.
+ * RAW+JPEG still saves RAW first after this preflight. If later JPEG
+ * encoding or output creation fails, returns -1 with raw_saved=1. There is
+ * NO atomic two-file transaction and NO rollback of completed RAW writes.
+ * No full-frame RGB staging or per-preset strength/Picture Wizard rewrite;
+ * no multi-JPEG sidecars. JPEG uses the fixed LUT18 from the committed
+ * selection, not caller-provided LUT bytes. Host JPEG is create-only.
+ * Actual camera frame ownership, native capture callback and DMA
+ * synchronization have NOT been verified.
  */
 int nx_host_shutter420_save_committed(
     const nx_host_shutter420_request *request,
