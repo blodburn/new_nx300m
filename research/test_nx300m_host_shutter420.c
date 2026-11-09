@@ -1,15 +1,19 @@
 #define _POSIX_C_SOURCE 200809L
 /* Synthetic host shutter route regression. NEVER accesses a camera. */
 #include "nx300m_host_shutter420.h"
+#include "nx300m_host_preview420.h"
 #include "nx300m_preview_rgb.h"
 #include <assert.h>
+#include <dlfcn.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 
-enum { W=34,H=22,YS=W+6,CS=W+8 };
+enum { W=34,H=22,YS=W+6,CS=W+8,PREVIEW_STRIDE=W*3+7 };
+typedef int (*render_rows_fn)(const nx_film_owned420_hypothesis_job *,
+                              unsigned,unsigned);
 static uint8_t y_plane[YS*H],c_plane[CS*(H/2)];
 static const uint8_t raw_data[]={
   'S','Y','N','T','H','E','T','I','C',0,1,2,3,4,5
@@ -91,6 +95,13 @@ static void check_original_and_raw(void){
  nx_shutter_result result;
  assert(nx_host_shutter420_save_committed(&r,&result)==0);
  assert(result.selected_film_id==0u&&result.jpeg_saved==1u);
+ /* Original bypasses preview math without opening a DSO or reading pixels. */
+ nx_host_preview420_request original_preview={0};
+ original_preview.controller=&ctrl;
+ unsigned shown=777u;
+ assert(nx_host_preview420_apply(&original_preview,&shown)==
+        NX_HOST_PREVIEW420_BYPASSED);
+ assert(shown==0u);
  assert(result.applied_film==0u&&result.raw_saved==0u);
  assert(ctx.original_calls==1u&&ctx.raw_calls==0u);
  r.mode=NX_SAVE_RAW_AND_JPEG;
@@ -138,6 +149,21 @@ static void check_film(const char *module){
  assert(nx_tizen_film_view_state(&ctrl,&view)==0);
  assert(view.open&&view.dirty&&view.preview_id==101u);
  assert(view.committed_id==100u);
+ /* Unconfirmed wheel choice is a real preview pixel transform.
+  * Shutter selection is still committed Film 100. */
+ uint8_t live_preview[H*PREVIEW_STRIDE],committed_preview[H*PREVIEW_STRIDE];
+ memset(live_preview,0xcc,sizeof(live_preview));
+ nx_host_preview420_request preview={0};
+ preview.controller=&ctrl;
+ preview.copied_input=&job;
+ preview.freestanding_module_path=module;
+ preview.output_rgb=live_preview;
+ preview.output_bytes=sizeof(live_preview);
+ preview.output_stride=PREVIEW_STRIDE;
+ unsigned shown=999u;
+ assert(nx_host_preview420_apply(&preview,&shown)==
+        NX_HOST_PREVIEW420_APPLIED);
+ assert(shown==101u);
 
  char first[160],both[160],guard[160];
  assert(snprintf(first,sizeof(first),"outputs/committed_film_%ld.jpg",
@@ -198,6 +224,14 @@ static void check_film(const char *module){
  assert(nx_tizen_film_dispatch(&ctrl,NX_TIZEN_FILM_CANCEL)
         ==NX_TIZEN_FILM_CHANGED);
  assert(ctrl.committed_id==100u);
+ memset(committed_preview,0xcc,sizeof(committed_preview));
+ preview.output_rgb=committed_preview;
+ preview.output_bytes=sizeof(committed_preview);
+ assert(nx_host_preview420_apply(&preview,&shown)==
+        NX_HOST_PREVIEW420_APPLIED);
+ assert(shown==100u);
+ assert(memcmp(live_preview,committed_preview,
+               sizeof(live_preview))!=0);
  assert(unlink(first)==0&&unlink(both)==0);
  puts("PASS: committed Film 100, preview 101 ignored, single JPEG, "
       "RAW+JPEG, no-overwrite, immutable planes and LUT");
@@ -249,6 +283,11 @@ static void check_all_committed_looks(const char *module){
  unsigned count=0u;
  nx_rgb12 *reference_lut=malloc((size_t)NX_LUT_COUNT*sizeof(*reference_lut));
  assert(reference_lut);
+ void *kernel=dlopen(module,RTLD_NOW|RTLD_LOCAL);
+ assert(kernel);
+ render_rows_fn render=(render_rows_fn)
+    dlsym(kernel,"nx_film_core_render_owned420_rows_hypothesis");
+ assert(render);
  for(size_t index=0;index<nx_film_count();index++){
   const nx_film_preset *p=nx_film_by_index(index);
   assert(p);
@@ -289,6 +328,36 @@ static void check_all_committed_looks(const char *module){
   oracle_job.lut=reference_lut;
   oracle_job.lut_nodes=NX_LUT_COUNT;
   oracle_job.grid=NX_LUT_GRID;
+  /* The HOST preview is computed from the same LUT18 as the JPEG
+   * pre-encode RGB row path, with no caller-provided LUT. */
+  uint8_t shown_rgb[H*PREVIEW_STRIDE],expected_rgb[H*W*3];
+  memset(shown_rgb,0xcc,sizeof(shown_rgb));
+  nx_host_preview420_request preview={0};
+  preview.controller=&ctrl;
+  preview.copied_input=&input;
+  preview.freestanding_module_path=module;
+  preview.output_rgb=shown_rgb;
+  preview.output_bytes=sizeof(shown_rgb);
+  preview.output_stride=PREVIEW_STRIDE;
+  unsigned shown=999u;
+  assert(nx_host_preview420_apply(&preview,&shown)==
+         NX_HOST_PREVIEW420_APPLIED&&shown==p->id);
+  oracle_job.rgb=expected_rgb;
+  oracle_job.rgb_bytes=sizeof(expected_rgb);
+  oracle_job.rgb_stride=W*3u;
+  assert(render(&oracle_job,0u,H)==0);
+  for(unsigned row=0;row<H;row++){
+   assert(memcmp(shown_rgb+(size_t)row*PREVIEW_STRIDE,
+                 expected_rgb+(size_t)row*W*3u,W*3u)==0);
+   for(unsigned x=W*3u;x<PREVIEW_STRIDE;x++)
+    assert(shown_rgb[(size_t)row*PREVIEW_STRIDE+x]==0xccu);
+  }
+  uint8_t guard[sizeof(shown_rgb)];
+  memcpy(guard,shown_rgb,sizeof(guard));
+  preview.output_bytes=W*3u-1u;
+  assert(nx_host_preview420_apply(&preview,&shown)==
+         NX_HOST_PREVIEW420_INVALID);
+  assert(memcmp(shown_rgb,guard,sizeof(guard))==0);
   assert(nx_host_freestanding420_jpeg_copy(
      module,&oracle_job,0,oracle,app1,sizeof(app1))==0);
   assert_same_jpeg_bytes(output,oracle);
@@ -309,7 +378,9 @@ static void check_all_committed_looks(const char *module){
     assert(hashes[i]!=hashes[j]);
    }
   }
+ assert(dlclose(kernel)==0);
  free(reference_lut);
+ printf("PASS host preview420 pixel-to-JPEG source parity for %u looks\n",count);
  printf("PASS committed LUT18-to-JPEG: %u distinct menu looks, "
         "exact factory LUT parity, NO caller LUT required\n",count);
 }
