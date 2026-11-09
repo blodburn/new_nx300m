@@ -48,6 +48,7 @@ test: multimodel-test
 	@python3 research/test_nx300m_fw114_function_proofs.py
 	@python3 research/test_nx300m_fw114_capture_jpeg_route.py
 	@python3 research/test_nx300m_fw114_runtime_metadata_gate.py
+	@python3 research/test_nx300m_fw114_installed_elf_identity_gate.py
 	@python3 research/test_nx300m_fw114_arm_loader_abi.py
 	@python3 research/test_nx300m_fw114_runtime_linkage_audit.py
 	@$(MAKE) --no-print-directory freestanding-test
@@ -70,6 +71,7 @@ test: multimodel-test
 	@python3 research/test_nx300m_native_jpeg_abi_boundary_audit.py
 	@python3 research/test_nx300m_native_still_mode7_boundary_audit.py
 	@sh -n scripts/nx300m_tizen_readonly_probe.sh
+	@sh -n scripts/nx300m_fw114_installed_elf_fingerprint.sh
 	@sh -n scripts/build_tizen_efl.sh
 	@sh scripts/nx300m_tizen_readonly_probe.sh --help
 	@$(MAKE) --no-print-directory efl-check
