@@ -23,6 +23,7 @@ int nx_host_shutter420_save_committed(
  unsigned committed=0u;
  nx_rgb12 *generated_lut=NULL;
  nx_film_owned420_hypothesis_job selected_job={0};
+ nx_host_owned420_snapshot snapshot={0};
  if(with_jpeg){
   if(!r->film_controller)return -1;
   const nx_film_preset *p=nx_film_by_id(
@@ -59,6 +60,14 @@ int nx_host_shutter420_save_committed(
    selected_job.lut=generated_lut;
    selected_job.lut_nodes=NX_LUT_COUNT;
    selected_job.grid=NX_LUT_GRID;
+
+   /* Validate and acquire all Y/C, LUT and transfer bytes BEFORE any RAW
+    * writer side effects. This also detaches JPEG from source changes in
+    * a RAW callback. It does not authenticate actual camera DMA memory. */
+   const int taken=nx_host_owned420_snapshot_take(&snapshot,&selected_job);
+   free(generated_lut);
+   generated_lut=NULL;
+   if(taken!=0)return -1;
   }
  }
  /* The controller's preview_index and open/dirty fields are NEVER read.
@@ -66,7 +75,7 @@ int nx_host_shutter420_save_committed(
 
  if(with_raw){
   if(r->write_raw(r->opaque_raw,r->raw_bytes,r->user)!=0){
-   free(generated_lut);
+   nx_host_owned420_snapshot_release(&snapshot);
    return -1;
   }
   out->raw_saved=1u;
@@ -78,10 +87,10 @@ int nx_host_shutter420_save_committed(
   out->jpeg_saved=1u;
   return 0;
  }
- const int jpeg_result=nx_host_freestanding420_jpeg_copy(
-      r->freestanding_module_path,&selected_job,0,
+ const int jpeg_result=nx_host_freestanding420_jpeg_from_snapshot(
+      r->freestanding_module_path,&snapshot,
       r->new_film_jpeg_path,r->original_exif_app1,r->exif_bytes);
- free(generated_lut);
+ nx_host_owned420_snapshot_release(&snapshot);
  if(jpeg_result!=0)return -1;
 
  out->applied_film=1u;
