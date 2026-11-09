@@ -260,7 +260,33 @@ jobs:
                   pinned["camera_firmware_flash_permitted"]
               ):
                   raise SystemExit("REJECT YCC/pack direct ARM pin results")
+              branch_guards=proof["native_local_conditional_branch_guards"]
+              if branch_guards["direct_zero_test_guard_count"]!=4 or (
+                  not branch_guards["direct_beq_skip_targets_source_backed"] or
+                  branch_guards["all_function_paths_or_external_calls_resolved"] or
+                  branch_guards["live_ycc_format_or_chroma_pack_verified"] or
+                  branch_guards["camera_dma_buffer_ownership_verified"] or
+                  branch_guards["firmware_flash_permitted"]
+              ):
+                  raise SystemExit("REJECT unsafe or changed native YCC guard paths")
               for field in fields:
+                  field_guards=branch_guards["fields"][field]
+                  if (len(field_guards["pinned_local_beq_skip_edges"])!=2 or
+                      len(field_guards["direct_stores_without_nearby_pinned_beq"])!=1 or
+                      field_guards["actual_camera_runtime_branch_outcome_proven"] or
+                      field_guards["full_reaching_definitions_or_alias_analysis_complete"]):
+                      raise SystemExit("REJECT YCC field zero-test guard inventory")
+                  for edge in field_guards["pinned_local_beq_skip_edges"]:
+                      if (not edge["branch_takes_skip_of_this_direct_store"] or
+                          edge["runtime_r3_input_origin_proven"] or
+                          edge["fallthrough_store_guaranteed"]):
+                          raise SystemExit("REJECT native YCC local branch overclaim")
+                      print("FW114_YCC_BEQ",version,field,
+                            "compare",edge["zero_compare_site"],
+                            "branch",edge["branch_site"],
+                            "skip_store",edge["bypassed_store_site"],
+                            "skip_target",edge["branch_target"],
+                            "runtime_unknown",not edge["runtime_r3_input_origin_proven"])
                   value=fields[field]
                   direct=pinned["pinned_fw114_115_known_direct_stores"][field]
                   if (value["actual_native_enum_value_proven"] or

@@ -89,6 +89,121 @@ def pin_known_arm_direct_writer_values(proof: dict) -> dict:
 
 
 
+# Actual FW1.14/1.15 A32 control flow, independently observed in the
+# offline mirror ELF. A zero CMP result causes a BEQ that skips the direct
+# MOV/STR pair. Not every field writer has an adjacent BEQ; this is NOT
+# a global path or runtime enum-value proof.
+#
+# (direct store PC, UXTB PC, CMP PC, BEQ PC, BEQ opcode, skip target)
+PINNED_LOCAL_BRANCH_GUARDS = {
+    "eImgYCCType": (
+        (0x34c10, 0x34c00, 0x34c04, 0x34c08, 0x0a000002, 0x34c18),
+        (0x34c40, 0x34c30, 0x34c34, 0x34c38, 0x0a000001, 0x34c44),
+    ),
+    "eImgYCCPackType": (
+        (0x34c74, 0x34c64, 0x34c68, 0x34c6c, 0x0a000002, 0x34c7c),
+        (0x34ca4, 0x34c94, 0x34c98, 0x34c9c, 0x0a000001, 0x34ca8),
+    ),
+}
+EXPECTED_UXTB_R3_R3 = 0xe6ef3073
+EXPECTED_CMP_R3_ZERO = 0xe3530000
+
+
+def a32_beq_direct_target(word: int, site: int) -> int:
+    """Decode A32 conditional BEQ imm24 to PC-relative target.
+
+    This only decodes a direct BEQ; it does not infer the condition flags'
+    provenance across arbitrary instructions or virtual/indirect calls.
+    """
+    if (type(word) is not int or type(site) is not int or
+        not 0 <= word <= 0xffffffff or site < 0 or site & 3 or
+        (word >> 24) != 0x0a):
+        raise ValueError("Expected an aligned ARM-state BEQ immediate")
+    signed_imm = word & 0xffffff
+    if signed_imm & 0x800000:
+        signed_imm -= 0x1000000
+    target = site + 8 + signed_imm * 4
+    if target < 0 or target > 0xffffffff or target & 3:
+        raise ValueError("Invalid A32 BEQ target")
+    return target
+
+
+def pin_local_ycc_branch_guards(
+    words: tuple[int, ...], direct_pins: dict
+) -> dict:
+    """Verify four zero-tested local skip edges from real A32 code.
+
+    A taken BEQ skips an adjacent direct store. It DOES NOT prove that the
+    store runs when BEQ is not taken, since other paths/calls and aliasing
+    are not modeled. It never identifies NV12/NV21/CbCr byte layouts.
+    """
+    if (len(words) != BODY_BYTES // 4 or
+        any(type(w) is not int or not 0 <= w <= 0xffffffff for w in words) or
+        set(direct_pins.get("pinned_fw114_115_known_direct_stores", {})) !=
+        set(PINNED_LOCAL_BRANCH_GUARDS)):
+        raise ValueError("Wrong native branch guard body or direct writer pins")
+    result = {}
+    for name, guards in PINNED_LOCAL_BRANCH_GUARDS.items():
+        pins = direct_pins["pinned_fw114_115_known_direct_stores"][name]
+        known_stores = {int(pc, 16) for pc in pins["verified_direct_store_sites"]}
+        observed = []
+        for store_pc, byte_pc, cmp_pc, branch_pc, opcode, skip_target in guards:
+            if (store_pc not in known_stores or
+                not START <= byte_pc < cmp_pc < branch_pc < store_pc <
+                ENCODER_CALL or
+                cmp_pc != byte_pc + 4 or branch_pc != cmp_pc + 4 or
+                store_pc != branch_pc + 8 or
+                words[(byte_pc - START)//4] != EXPECTED_UXTB_R3_R3 or
+                words[(cmp_pc - START)//4] != EXPECTED_CMP_R3_ZERO or
+                words[(branch_pc - START)//4] != opcode or
+                words[(store_pc-4-START)//4] not in
+                (0xe3a03000, 0xe3a03001)):
+                raise ValueError(
+                    f"Changed native {name} zero-test/branch/field-store path"
+                )
+            computed_target = a32_beq_direct_target(opcode, branch_pc)
+            if (computed_target != skip_target or
+                not branch_pc < store_pc < computed_target):
+                raise ValueError("BEQ no longer skips the expected direct store")
+            observed.append({
+                "store_site": f"0x{store_pc:08x}",
+                "byte_extract_site": f"0x{byte_pc:08x}",
+                "byte_extract_instruction": "UXTB r3,r3",
+                "zero_compare_site": f"0x{cmp_pc:08x}",
+                "compare_instruction": "CMP r3,#0",
+                "branch_site": f"0x{branch_pc:08x}",
+                "branch_opcode": f"0x{opcode:08x}",
+                "taken_when": "r3_equals_zero",
+                "branch_target": f"0x{computed_target:08x}",
+                "bypassed_store_site": f"0x{store_pc:08x}",
+                "branch_takes_skip_of_this_direct_store": True,
+                "runtime_r3_input_origin_proven": False,
+                "fallthrough_store_guaranteed": False,
+            })
+        result[name] = {
+            "pinned_local_beq_skip_edges": observed,
+            "direct_stores_without_nearby_pinned_beq": [
+                f"0x{pc:08x}" for pc in sorted(
+                    known_stores - {x[0] for x in guards}
+                )
+            ],
+            "full_reaching_definitions_or_alias_analysis_complete": False,
+            "actual_camera_runtime_branch_outcome_proven": False,
+        }
+    return {
+        "direct_zero_test_guard_count": sum(
+            len(value["pinned_local_beq_skip_edges"])
+            for value in result.values()
+        ),
+        "fields": result,
+        "direct_beq_skip_targets_source_backed": True,
+        "all_function_paths_or_external_calls_resolved": False,
+        "live_ycc_format_or_chroma_pack_verified": False,
+        "camera_dma_buffer_ownership_verified": False,
+        "firmware_flash_permitted": False,
+    }
+
+
 def decode_arm_simple_mov(word: int, target_register: int) -> dict | None:
     """Only unconditional ARM32 MOV Rd,#imm / MOV Rd,Rm (no shifts)."""
     if not isinstance(word, int) or not 0 <= word <= 0xffffffff:
@@ -212,6 +327,9 @@ def inspect_photo_elf(path):
     proof = trace_field_origins(words)
     proof["actual_static_direct_writer_pins"] = pin_known_arm_direct_writer_values(
         proof
+    )
+    proof["native_local_conditional_branch_guards"] = pin_local_ycc_branch_guards(
+        words, proof["actual_static_direct_writer_pins"]
     )
     return proof
 
