@@ -28,6 +28,7 @@ test: multimodel-test
 	@python3 research/test_nx300m_fw114_jfif_r6_arg_provenance.py
 	@python3 research/test_nx300m_fw114_hal_table_plus8_audit.py
 	@python3 research/test_nx300m_fw114_photo_ycc_copy_boundary.py
+	@python3 research/test_nx300m_fw114_encoder_format_pack_origins.py
 	@python3 research/test_nx300m_fw114_photo_buffer_lifetime.py
 	@python3 research/test_nx300m_fw114_cycc_provider_probe.py
 	@python3 research/test_nx300m_fw114_pool_slot8_writer_audit.py
