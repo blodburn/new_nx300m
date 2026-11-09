@@ -44,6 +44,14 @@ flashing remain explicitly unsupported.
 
 Host-only [Y/C420 + RGB manifest validation](docs/NX300M_CAPTURE_EVIDENCE_PREFLIGHT_20261102.md) checks three externally copied files, declared geometry, size and independent SHA-256 before experimental color-model analysis. It always refuses to certify same-stage camera provenance, NX300M native layout, ABI or firmware flash safety. Run `python3 research/test_nx300m_capture_manifest_gate.py` to reproduce 17 synthetic cases.
 
+## Owner-authorized installed camera ELF identity check (2026-11-09)
+
+Added a passive shell probe to read SHA-256 for four fixed camera libraries
+and a PC-side comparison against operator-selected offline ARM32 ELF files.
+No camera access has been performed. Even matching bytes prove neither a
+Samsung-signed firmware image nor live DMA buffer ownership. Read the
+[device identity verification procedure](docs/NX300M_FW114_INSTALLED_ELF_IDENTITY_20261109.md).
+
 ## Host preview ↔ shutter LUT18 parity (2026-11-09)
 
 The host-only wheel preview now uses the same LUT18 builder and no-libc
