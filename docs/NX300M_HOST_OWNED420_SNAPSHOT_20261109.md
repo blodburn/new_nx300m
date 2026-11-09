@@ -6,7 +6,7 @@ Before this change, the host JPEG adapter accepted caller-declared "copied"
 Y/C planes and tables. During JPEG output it could continue reading those
 external allocations even if the caller subsequently changed them.
 
-The new \`nx_host_owned420_snapshot_take\` copies the minimum accessed spans of
+The new `nx_host_owned420_snapshot_take` copies the minimum accessed spans of
 Y, interleaved chroma, LUT, 256-entry sRGB decoder and 4096-entry encoder.
 It validates dimensions, even 4:2:0 geometry, strides, supported hypothesis,
 LUT count, source span separation, decode entry range, source bounds and the
@@ -14,7 +14,7 @@ LUT count, source span separation, decode entry range, source bounds and the
 
 The existing host streaming JPEG adapter now performs:
 
-\`\`\`text
+```text
 caller-provided HOST buffers (not camera DMA)
         |
         v
@@ -28,7 +28,7 @@ no-libc RGB888 row transform
         |
         v
 host-only transactional JPEG 4:2:0 + optional original APP1
-\`\`\`
+```
 
 The snapshot uses copies of only the bytes read by the renderer, including
 row-stride gaps. It does not make a full-frame RGB buffer. The host JPEG
