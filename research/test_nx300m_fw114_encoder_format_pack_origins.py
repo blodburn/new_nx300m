@@ -47,6 +47,26 @@ def fixture():
     return result
 
 
+def fixture_actual_guard_pairs():
+    """Synthetic instructions pinned to six source-backed writer PCs."""
+    words = fixture()
+    for pc in (0x34b70, 0x34b74, 0x34b78, 0x34b7c):
+        words[(pc-source.START)//4] = NOP
+    for field, sites in source.PINNED_DIRECT_WRITERS.items():
+        store_op = (
+            0xe50b3028 if field == "eImgYCCType" else 0xe50b302c
+        )
+        for store_pc, value in sites:
+            words[(store_pc-4-source.START)//4] = 0xe3a03000 | value
+            words[(store_pc-source.START)//4] = store_op
+    for guards in source.PINNED_LOCAL_BRANCH_GUARDS.values():
+        for _, uxtb_pc, cmp_pc, branch_pc, branch_op, _ in guards:
+            words[(uxtb_pc-source.START)//4] = source.EXPECTED_UXTB_R3_R3
+            words[(cmp_pc-source.START)//4] = source.EXPECTED_CMP_R3_ZERO
+            words[(branch_pc-source.START)//4] = branch_op
+    return words
+
+
 class EncoderYccFieldOriginTests(unittest.TestCase):
     def test_two_separate_native_stack_slot_writer_candidates(self):
         proof = source.trace_field_origins(tuple(fixture()))
@@ -123,6 +143,78 @@ class EncoderYccFieldOriginTests(unittest.TestCase):
             source.pin_known_arm_direct_writer_values(
                 source.trace_field_origins(tuple(words))
             )
+
+    def test_four_real_arm_zero_guard_edges(self):
+        words = tuple(fixture_actual_guard_pairs())
+        pins = source.pin_known_arm_direct_writer_values(
+            source.trace_field_origins(words)
+        )
+        proof = source.pin_local_ycc_branch_guards(words, pins)
+        self.assertEqual(proof["direct_zero_test_guard_count"], 4)
+        self.assertTrue(proof["direct_beq_skip_targets_source_backed"])
+        expected = {
+            "eImgYCCType": ("0x00034c18", "0x00034c44"),
+            "eImgYCCPackType": ("0x00034c7c", "0x00034ca8"),
+        }
+        for field, targets in expected.items():
+            trace = proof["fields"][field]
+            self.assertEqual(
+                tuple(x["branch_target"]
+                      for x in trace["pinned_local_beq_skip_edges"]),
+                targets
+            )
+            self.assertEqual(
+                len(trace["direct_stores_without_nearby_pinned_beq"]), 1
+            )
+            for edge in trace["pinned_local_beq_skip_edges"]:
+                self.assertTrue(edge["branch_takes_skip_of_this_direct_store"])
+                self.assertFalse(edge["runtime_r3_input_origin_proven"])
+                self.assertFalse(edge["fallthrough_store_guaranteed"])
+            self.assertFalse(
+                trace["actual_camera_runtime_branch_outcome_proven"]
+            )
+        self.assertFalse(proof["live_ycc_format_or_chroma_pack_verified"])
+        self.assertFalse(proof["firmware_flash_permitted"])
+
+    def test_any_mutated_guard_instruction_fails_closed(self):
+        baseline = fixture_actual_guard_pairs()
+        pins = source.pin_known_arm_direct_writer_values(
+            source.trace_field_origins(tuple(baseline))
+        )
+        for guards in source.PINNED_LOCAL_BRANCH_GUARDS.values():
+            for _, uxtb_pc, cmp_pc, branch_pc, branch_op, _ in guards:
+                for pc, bad in (
+                    (uxtb_pc, NOP),
+                    (cmp_pc, 0xe3530001),  # CMP r3,#1, not #0
+                    (branch_pc, branch_op ^ 1),  # changed branch target
+                ):
+                    with self.subTest(pc=hex(pc), bad=hex(bad)):
+                        wrong = baseline.copy()
+                        wrong[(pc-source.START)//4] = bad
+                        with self.assertRaisesRegex(ValueError, "Changed native"):
+                            source.pin_local_ycc_branch_guards(
+                                tuple(wrong), pins
+                            )
+
+    def test_beq_target_decoder_rejects_bl_ne_and_unaligned_sites(self):
+        self.assertEqual(
+            source.a32_beq_direct_target(0x0a000002, 0x34c08),
+            0x34c18
+        )
+        self.assertEqual(
+            source.a32_beq_direct_target(0x0afffffe, 0x1000),
+            0x1000
+        )
+        for value, pc in (
+            (0x1a000002, 0x34c08), # BNE
+            (0xeb000002, 0x34c08), # BL
+            (0x0a000002, 0x34c09), # unaligned
+            (-1, 0x34c08),
+            (True, 0x34c08),
+        ):
+            with self.subTest(word=value,site=pc):
+                with self.assertRaises(ValueError):
+                    source.a32_beq_direct_target(value, pc)
 
     def test_changed_native_jpeg_argument_load_rejected(self):
         words = fixture()
