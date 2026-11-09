@@ -9,6 +9,7 @@
  * NO prev/next on-screen buttons, no intensity slider, no camera patch.
  * This file requires the matching ARM/Tizen EFL sysroot to build for camera.
  */
+#define _POSIX_C_SOURCE 200809L
 #include <Elementary.h>
 #include <stdio.h>
 #include <stdlib.h>
