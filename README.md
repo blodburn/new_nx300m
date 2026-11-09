@@ -44,6 +44,16 @@ flashing remain explicitly unsupported.
 
 Host-only [Y/C420 + RGB manifest validation](docs/NX300M_CAPTURE_EVIDENCE_PREFLIGHT_20261102.md) checks three externally copied files, declared geometry, size and independent SHA-256 before experimental color-model analysis. It always refuses to certify same-stage camera provenance, NX300M native layout, ABI or firmware flash safety. Run `python3 research/test_nx300m_capture_manifest_gate.py` to reproduce 17 synthetic cases.
 
+## Host preview ↔ shutter LUT18 parity (2026-11-09)
+
+The host-only wheel preview now uses the same LUT18 builder and no-libc
+Y/C420 pixel kernel as the committed shutter-to-JPEG route. A pending
+wheel selection changes preview only, not the shutter output. All 12
+non-Original looks are tested against a pixel-exact pre-JPEG reference,
+with full-frame fail-closed staging and preserved output row padding.
+This is **not an actual NX300M camera/live-view connection**. See
+[scope and test details](docs/NX300M_PREVIEW_SHUTTER_PARITY_20261109.md).
+
 ## Film Simulator committed preset → JPEG pixels (2026-11-09)
 
 The **host-only shutter route now constructs its LUT18 directly from the
