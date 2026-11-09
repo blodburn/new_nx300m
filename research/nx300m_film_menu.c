@@ -3,6 +3,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
+#include <limits.h>
+#include <errno.h>
 #define MIX(RG,GB,BR) {1.f-(RG),RG,0.f,0.f,1.f-(GB),GB,(BR),0.f,1.f-(BR)}
 /* Single Leica Q3 research reference only (Q2 dropped). The following five Q3 study coefficients are independent placeholders, NOT extracted/measured Leica firmware values. */
 static const nx_film_preset PRESETS[] = {
@@ -28,6 +30,40 @@ const nx_film_preset *nx_film_by_id(unsigned id){
     for(size_t i=0;i<nx_film_count();i++) if(PRESETS[i].id==id)return &PRESETS[i];
     return NULL;
 }
+
+/* Read only the documented V1/V2 config format. Never apply a partial
+ * or malformed file as a camera setting. Every saved V2 file has two
+ * newline-terminated ASCII lines. V1 can also have strength=<number>,
+ * which is checked but deliberately ignored because looks are fixed. */
+static int parse_unsigned_config_line(const char *line,const char *prefix,
+                                      unsigned *value){
+    const size_t len=strlen(prefix);
+    if(strncmp(line,prefix,len)!=0)return -1;
+    const unsigned char *p=(const unsigned char *)line+len;
+    if(*p<'0'||*p>'9')return -1;
+    unsigned n=0;
+    while(*p>='0'&&*p<='9'){
+        const unsigned digit=(unsigned)(*p-'0');
+        if(n>(UINT_MAX-digit)/10u)return -1;
+        n=n*10u+digit;
+        p++;
+    }
+    if(*p!='\n'||p[1]!=0)return -1;
+    *value=n;
+    return 0;
+}
+static int legacy_strength_line_ok(const char *line){
+    if(strncmp(line,"strength=",9)!=0)return 0;
+    const char *p=line+9;
+    if(!((*p>='0'&&*p<='9')||*p=='+'||*p=='-'||*p=='.'))
+        return 0;
+    errno=0;
+    char *end=NULL;
+    const double ignored=strtod(p,&end);
+    return end!=p&&errno!=ERANGE&&isfinite(ignored)&&
+           *end=='\n'&&end[1]==0;
+}
+
 void nx_film_menu_init(nx_film_menu *m){
     if(m){m->selected_id=0;m->page=0;m->cursor=0;}
 }
@@ -50,17 +86,39 @@ int nx_film_menu_store(const nx_film_menu *m,const char *path){
     int rc=fclose(f);return ok>0&&rc==0?0:-1;
 }
 int nx_film_menu_load(nx_film_menu *m,const char *path){
-    if(!m||!path)return -1;
-    FILE *f=fopen(path,"r");if(!f)return -1;
+    if(!m||!path||!path[0])return -1;
+    FILE *f=fopen(path,"rb");
+    if(!f)return -1;
+    char version_line[64],id_line[64],legacy_line[128];
     unsigned version=0,id=0;
-    int matched=fscanf(f,"NX_FILM_MENU %u\npreset=%u",&version,&id);
-    fclose(f);
-    if(matched!=2||(version!=1&&version!=NX_FILM_MENU_VERSION)||!nx_film_by_id(id))return -1;
-    /* V1 strength is deliberately ignored: presets have fixed processing values. */
-    id=canonical_id(id);
-    m->selected_id=id;
-    for(size_t i=0;i<nx_film_count();i++)if(PRESETS[i].id==id){m->cursor=(unsigned)i;break;}
-    return 0;
+    int valid=0;
+    if(fgets(version_line,sizeof(version_line),f)&&
+       fgets(id_line,sizeof(id_line),f)&&
+       parse_unsigned_config_line(version_line,"NX_FILM_MENU ",&version)==0&&
+       (version==1u||version==NX_FILM_MENU_VERSION)&&
+       parse_unsigned_config_line(id_line,"preset=",&id)==0){
+        int next=fgetc(f);
+        if(next==EOF){
+            valid=!ferror(f);
+        }else if(version==1u&&ungetc(next,f)!=EOF&&
+                 fgets(legacy_line,sizeof(legacy_line),f)&&
+                 legacy_strength_line_ok(legacy_line)){
+            next=fgetc(f);
+            valid=(next==EOF&&!ferror(f));
+        }
+    }
+    if(fclose(f)!=0||!valid)return -1;
+    const nx_film_preset *preset=nx_film_by_id(id);
+    if(!preset)return -1;
+    /* The menu is updated only after the whole file passes validation. */
+    for(size_t i=0;i<nx_film_count();i++){
+        if(PRESETS[i].id==preset->id){
+            m->selected_id=preset->id;
+            m->cursor=(unsigned)i;
+            return 0;
+        }
+    }
+    return -1;
 }
 int nx_film_lut_for_menu(const nx_film_menu *m,nx_rgb12 *lut){
     if(!m||!lut)return -1;

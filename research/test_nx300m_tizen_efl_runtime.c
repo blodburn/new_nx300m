@@ -163,6 +163,18 @@ void elm_run(void){
   assert(matches_preset(100)&&!saved_id(100));
   assert(strstr(ui.status->markup,"NOT SAVED"));
   break;
+ case 6: /* Existing malformed settings must show a visible warning. */
+  assert(ui.config_load_error==1);
+  assert(ui.controller.committed_id==0);
+  assert(strstr(ui.status->markup,"CONFIG INVALID"));
+  assert(ui.keymap.enabled);
+  key("Right");
+  assert(ui.controller.committed_id==0);
+  key("Return");
+  assert(saved_id(100));
+  assert(ui.config_load_error==0);
+  assert(strstr(ui.status->markup,"SAVED CONFIG ONLY"));
+  break;
  case 5: /* Bounded keyname observations: no more than 32 log entries. */
   assert(!ui.keymap.enabled);
   for(unsigned j=0;j<42;j++)key("ReadOnlyKeyName");
@@ -191,7 +203,7 @@ static void run_case(unsigned scenario){
  reset_environment();
  run_scenario=scenario;
  if(scenario!=4)assert(setenv("NX_FILM_CONFIG",config_filename,1)==0);
- if(scenario==1||scenario==4)
+ if(scenario==1||scenario==4||scenario==6)
   assert(setenv("NX_FILM_DEMO_KEYS","1",1)==0);
  if(scenario==2){
   assert(setenv("NX_FILM_KEY_CW","RingCW",1)==0);
@@ -201,6 +213,12 @@ static void run_case(unsigned scenario){
  }
  if(scenario==3)assert(setenv("NX_FILM_KEY_CW","RingCW",1)==0);
  if(scenario==5)assert(setenv("NX_FILM_LOG_KEYS","1",1)==0);
+ if(scenario==6){
+  FILE *bad=fopen(config_filename,"wb");
+  assert(bad);
+  assert(fputs("NX_FILM_MENU 2\npreset=101\ntrailer=1\n",bad)>0);
+  assert(fclose(bad)==0);
+ }
  char *args[]={(char *)"nx300m-efl-host-test",NULL};
  assert(nx300m_tizen_gui_entry_for_host_test(1,args)==0);
  assert(registered_close);
@@ -212,8 +230,8 @@ int main(void){
  int n=snprintf(config_filename,sizeof(config_filename),
                 "%s/film.cfg",dir);
  assert(n>0&&(size_t)n<sizeof(config_filename));
- for(unsigned scenario=0;scenario<=5;scenario++)run_case(scenario);
+ for(unsigned scenario=0;scenario<=6;scenario++)run_case(scenario);
  assert(rmdir(dir)==0);
- puts("PASS host EFL runtime simulation: 6 GUI scenarios, disabled default, committed sidebar display, explicit mapping, confirm/persist, cancel, error feedback, bounded diagnostics");
+ puts("PASS host EFL runtime simulation: 7 GUI scenarios, disabled default, committed sidebar display, explicit mapping, confirm/persist, cancel, error feedback, bounded diagnostics");
  return 0;
 }

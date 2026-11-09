@@ -9,10 +9,13 @@
  * NO prev/next on-screen buttons, no intensity slider, no camera patch.
  * This file requires the matching ARM/Tizen EFL sysroot to build for camera.
  */
+#define _POSIX_C_SOURCE 200809L
 #include <Elementary.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <errno.h>
+#include <sys/stat.h>
 #include "nx300m_tizen_film_controller.h"
 #include "nx300m_film_menu.h"
 #include "nx300m_tizen_keymap.h"
@@ -23,6 +26,7 @@ typedef struct {
  nx_tizen_keymap keymap;
  unsigned observed_keynames;
  int log_keynames;
+ int config_load_error;
  const char *settings_path;
 } film_ui;
 static film_ui ui;
@@ -60,9 +64,10 @@ static void redraw(const char *message){
   v.dirty?"NOT SAVED":"CURRENT MODE");
  elm_object_text_set(ui.neighbors,text);
  elm_object_text_set(ui.status,message?message:
+   (ui.config_load_error?"CONFIG INVALID: ORIGINAL MODE ACTIVE; CONFIRM TO REPLACE FILE":
    (!ui.keymap.enabled?
    "KEY INPUT DISABLED: SET ALL FOUR NX_FILM_KEY_* VARIABLES"
-   :"OFFLINE TIZEN UI ONLY: NO CAMERA LIVEVIEW/ISP/JPEG CONNECTION"));
+   :"OFFLINE TIZEN UI ONLY: NO CAMERA LIVEVIEW/ISP/JPEG CONNECTION")));
 }
 static void setup_input_mapping(void){
  memset(&ui.keymap,0,sizeof(ui.keymap));
@@ -117,8 +122,10 @@ static void on_key_down(void *data,Evas *evas,Evas_Object *object,void *info){
     (event==NX_TIZEN_FILM_ROTATE_CW||event==NX_TIZEN_FILM_ROTATE_CCW))
   (void)nx_tizen_film_dispatch(&ui.controller,NX_TIZEN_FILM_OPEN);
  int result=nx_tizen_film_dispatch(&ui.controller,event);
- if(result==NX_TIZEN_FILM_SAVED)
+ if(result==NX_TIZEN_FILM_SAVED){
+  ui.config_load_error=0;
   redraw("SAVED CONFIG ONLY: NATIVE JPEG ENGINE NOT CONNECTED");
+ }
  else if(result==NX_TIZEN_FILM_ERROR)
   redraw("NOT SAVED: CHECK EXPLICIT NX_FILM_CONFIG FILE PATH");
  else redraw(NULL);
@@ -141,9 +148,14 @@ int main(int argc,char **argv){
  nx_film_menu saved;
  nx_film_menu_init(&saved);
  ui.settings_path=getenv("NX_FILM_CONFIG");
- if(ui.settings_path&&ui.settings_path[0])
-  (void)nx_film_menu_load(&saved,ui.settings_path);
- else ui.settings_path=NULL;
+ if(ui.settings_path&&ui.settings_path[0]){
+  if(nx_film_menu_load(&saved,ui.settings_path)!=0){
+   struct stat st;
+   /* A missing file is a first-run case, not a corrupt configuration. */
+   if(lstat(ui.settings_path,&st)==0||errno!=ENOENT)
+    ui.config_load_error=1;
+  }
+ }else ui.settings_path=NULL;
  nx_tizen_film_controller_init(&ui.controller,saved.selected_id,
                                 ui.settings_path?persist:NULL,
                                 (void *)ui.settings_path);
@@ -173,7 +185,9 @@ int main(int argc,char **argv){
                                 on_key_down,NULL);
  evas_object_resize(ui.window,640,360);
  evas_object_focus_set(ui.window,EINA_TRUE);
- redraw(ui.settings_path?NULL:"PREVIEW ONLY: SET NX_FILM_CONFIG TO ENABLE SAVE");
+ redraw(ui.config_load_error?
+  "CONFIG INVALID: ORIGINAL MODE ACTIVE; CONFIRM TO REPLACE FILE":
+  (ui.settings_path?NULL:"PREVIEW ONLY: SET NX_FILM_CONFIG TO ENABLE SAVE"));
  evas_object_show(ui.window);
  elm_run();
  elm_shutdown();
