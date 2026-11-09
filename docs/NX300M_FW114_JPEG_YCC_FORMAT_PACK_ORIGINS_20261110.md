@@ -29,9 +29,31 @@ per-frame fields were previously untraced.
   writer when branches or repeated stores exist.
 - Native FW1.14 and FW1.15 audit report store-candidate counts
   separately. The offline CI rejects missing/altered ABI instructions.
-- Six synthetic tests validate normal origins, ambiguous multiple
+- Seven synthetic tests validate normal origins, ambiguous multiple
   stores, missing writers, mutated known instructions and rejection
   of conditional/shifted register claims.
+
+## Verified FW1.14 + FW1.15 direct writer sites
+
+The native ELF runner independently reported **three direct stack writes
+for each field** in both versions. Each direct write has an adjacent
+unconditional ARM MOV immediate; this was observed in the real, extracted
+FW1.14/1.15 byte stream and is now pinned in CI.
+
+| Encoder argument | Direct STR at ARM PC | Immediately preceding MOV |
+|---|---|---|
+| eImgYCCType | 0x34be4 | MOV r3,#0 |
+| eImgYCCType | 0x34c10 | MOV r3,#0 |
+| eImgYCCType | 0x34c40 | MOV r3,#1 |
+| eImgYCCPackType | 0x34c48 | MOV r3,#0 |
+| eImgYCCPackType | 0x34c74 | MOV r3,#1 |
+| eImgYCCPackType | 0x34ca4 | MOV r3,#0 |
+
+These are **direct writer candidates**, NOT the single runtime-selected
+value. The choice depends on branches and on the complete provenance
+of the fields and pointers. A direct-write inventory does not exclude
+indirect aliases, nor does numeric enum 0/1 identify the C plane's
+physical packing without verifying enum definitions and live pixels.
 
 ## Interpretation
 
