@@ -32,10 +32,12 @@ void nx_host_owned420_snapshot_release(nx_host_owned420_snapshot *s){
 int nx_host_owned420_snapshot_take(
     nx_host_owned420_snapshot *out,
     const nx_film_owned420_hypothesis_job *j){
-    if(!out)return -1;
-    /* The output is caller-owned and must be zero-initialized. */
-    memset(out,0,sizeof(*out));
-    if(!j||j->copy_declaration!=NX_FILM_420_COPY_DECLARATION||
+    /* Reject a NULL or overlapping descriptor before the first write.
+     * Older code cleared out before testing whether it was the job itself. */
+    if(!out||!j||invalid_span(out,sizeof(*out))||
+       invalid_span(j,sizeof(*j))||
+       overlap(out,sizeof(*out),j,sizeof(*j)))return -1;
+    if(j->copy_declaration!=NX_FILM_420_COPY_DECLARATION||
        (j->hypothesis!=NX_FILM_BT601_FULL_CBCR_HYPOTHESIS&&
         j->hypothesis!=NX_FILM_BT601_FULL_CRCB_HYPOTHESIS)||
        j->width<4u||j->width>8192u||(j->width&1u)||
@@ -65,14 +67,20 @@ int nx_host_owned420_snapshot_take(
     for(unsigned i=0;i<5u;i++){
         if(invalid_span(sources[i],spans[i])||
            budget_add(&total,spans[i])!=0)return -1;
+        /* Reject accidental self-clobber of caller metadata or any input.
+         * Validation must finish before out is written at all. */
+        if(overlap(out,sizeof(*out),sources[i],spans[i])||
+           overlap(j,sizeof(*j),sources[i],spans[i]))
+            return -1;
         for(unsigned k=0;k<i;k++)
             if(overlap(sources[i],spans[i],sources[k],spans[k]))
                 return -1;
     }
-    /* Refuse nonsensical host input before allocating. No camera
-     * pixel-buffer range is inferred from the supplied metadata. */
-    for(unsigned i=0;i<256u;i++)
-        if(j->decode_srgb[i]>4095u)return -1;
+    /* The contract requires a zero-initialized destination. Refuse reuse
+     * without release; never lose pointers to an earlier snapshot. */
+    if(out->owned_y||out->owned_chroma||out->owned_lut||
+       out->owned_decode||out->owned_encode)return -1;
+    memset(out,0,sizeof(*out));
 
     out->owned_y=malloc(yn);
     out->owned_chroma=malloc(cn);
@@ -89,6 +97,13 @@ int nx_host_owned420_snapshot_take(
     memcpy(out->owned_lut,j->lut,ln);
     memcpy(out->owned_decode,j->decode_srgb,dn);
     memcpy(out->owned_encode,j->encode_srgb,en);
+    /* Validate the detached table, not a second read from caller storage.
+     * Callers must still guarantee stable input during initial acquisition. */
+    for(unsigned i=0;i<256u;i++)
+        if(out->owned_decode[i]>4095u){
+            nx_host_owned420_snapshot_release(out);
+            return -1;
+        }
     out->job=*j;
     out->job.y=out->owned_y;
     out->job.y_bytes=yn;
@@ -102,4 +117,44 @@ int nx_host_owned420_snapshot_take(
     out->job.rgb_bytes=0u;
     out->job.rgb_stride=0u;
     return 0;
+}
+
+/* A structural check for snapshots returned by take(). This is not a
+ * capability token: a forged C pointer cannot be authenticated here. */
+int nx_host_owned420_snapshot_ready(const nx_host_owned420_snapshot *s){
+    if(!s||!s->owned_y||!s->owned_chroma||!s->owned_lut||
+       !s->owned_decode||!s->owned_encode)return 0;
+    const nx_film_owned420_hypothesis_job *j=&s->job;
+    if(j->copy_declaration!=NX_FILM_420_COPY_DECLARATION||
+       (j->hypothesis!=NX_FILM_BT601_FULL_CBCR_HYPOTHESIS&&
+        j->hypothesis!=NX_FILM_BT601_FULL_CRCB_HYPOTHESIS)||
+       j->width<4u||j->width>8192u||(j->width&1u)||
+       j->height<4u||j->height>8192u||(j->height&1u)||
+       j->y_stride<j->width||j->chroma_stride<j->width||
+       j->y_stride>65536u||j->chroma_stride>65536u||
+       j->grid<2u||j->grid>65u)return 0;
+    const size_t expected_y=((size_t)j->height-1u)*j->y_stride+j->width;
+    const size_t expected_c=((size_t)j->height/2u-1u)*j->chroma_stride+j->width;
+    const size_t expected_nodes=(size_t)j->grid*j->grid*j->grid;
+    if(j->y!=s->owned_y||j->y_bytes!=expected_y||
+       j->chroma!=s->owned_chroma||j->chroma_bytes!=expected_c||
+       j->lut!=s->owned_lut||j->lut_nodes!=expected_nodes||
+       j->decode_srgb!=s->owned_decode||j->decode_entries!=256u||
+       j->encode_srgb!=s->owned_encode||j->encode_entries!=4096u||
+       j->rgb||j->rgb_bytes||j->rgb_stride)return 0;
+    const void *sources[5]={
+        s->owned_y,s->owned_chroma,s->owned_lut,
+        s->owned_decode,s->owned_encode
+    };
+    const size_t spans[5]={
+        expected_y,expected_c,expected_nodes*sizeof(nx_rgb12),
+        256u*sizeof(uint16_t),4096u
+    };
+    for(unsigned i=0;i<5u;i++){
+        if(invalid_span(sources[i],spans[i])||
+           overlap(s,sizeof(*s),sources[i],spans[i]))return 0;
+        for(unsigned k=0;k<i;k++)
+            if(overlap(sources[i],spans[i],sources[k],spans[k]))return 0;
+    }
+    return 1;
 }
