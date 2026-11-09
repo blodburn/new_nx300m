@@ -3,6 +3,7 @@
  * writer. It does not load on NX300M or use Samsung JPEG/EXIF internals.
  */
 #include "nx300m_host_freestanding420_jpeg.h"
+#include "nx300m_host_owned420_snapshot.h"
 #include "nx300m_host_jpeg_sink.h"
 #include <dlfcn.h>
 #include <stdint.h>
@@ -27,9 +28,14 @@ int nx_host_freestanding420_jpeg_copy(
     (copied_input->width&1u)||(copied_input->height&1u))
   return -1;
 
+ /* Detach every subsequently-read Y/C/LUT/transfer-table byte from the
+  * caller before starting JPEG output. This is HOST memory only, never
+  * proof of live camera DMA ownership or buffer coherency. */
+ nx_host_owned420_snapshot snapshot={0};
+ if(nx_host_owned420_snapshot_take(&snapshot,copied_input)!=0)return -1;
  const size_t row_bytes=(size_t)copied_input->width*3u;
  uint8_t *row=malloc(row_bytes);
- if(!row)return -1;
+ if(!row){nx_host_owned420_snapshot_release(&snapshot);return -1;}
  int result=-1;
  void *module=dlopen(module_path,RTLD_NOW|RTLD_LOCAL);
  if(!module)goto cleanup_row;
@@ -37,7 +43,7 @@ int nx_host_freestanding420_jpeg_copy(
     dlsym(module,"nx_film_core_render_owned420_rows_hypothesis");
  if(!render)goto cleanup_module;
 
- nx_film_owned420_hypothesis_job job=*copied_input;
+ nx_film_owned420_hypothesis_job job=snapshot.job;
  job.rgb=row;
  job.rgb_bytes=row_bytes;
  job.rgb_stride=row_bytes;
@@ -64,5 +70,6 @@ cleanup_module:
  (void)dlclose(module);
 cleanup_row:
  free(row);
+ nx_host_owned420_snapshot_release(&snapshot);
  return result;
 }
