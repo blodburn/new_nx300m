@@ -3,6 +3,48 @@
 #include <stdio.h>
 #include <string.h>
 static nx_rgb12 pixels[NX_LUT_COUNT];
+static void test_corrupt_config_never_changes_selection(void){
+    const char *path="outputs/TEST_invalid_film_selection.cfg";
+    static const char *bad[]={
+        "",
+        "NX_FILM_MENU 2\\npreset=100", /* truncated last line */
+        "NX_FILM_MENU 2\\npreset=100\\ntrailer=1\\n",
+        "NX_FILM_MENU 2\\npreset=100\\nstrength=0.5\\n",
+        "NX_FILM_MENU 2\\npreset=999\\n",
+        "NX_FILM_MENU 2\\npreset=42949672960\\n",
+        "NX_FILM_MENU 2\\npreset=+100\\n",
+        "NX_FILM_MENU 2\\npreset=100x\\n",
+        "NX_FILM_MENU 2\\npreset= 100\\n",
+        "NX_FILM_MENU 1\\npreset=304\\nstrength=nan\\n",
+        "NX_FILM_MENU 1\\npreset=304\\nstrength=1e999\\n",
+        "NX_FILM_MENU 1\\npreset=304\\nstrength=0.5\\njunk\\n",
+        "NX_FILM_MENU 3\\npreset=100\\n",
+        "NX_FILM_MENU 2\\npreset=100\\n\\n"
+    };
+    for(size_t i=0;i<sizeof(bad)/sizeof(bad[0]);i++){
+        FILE *f=fopen(path,"wb");
+        assert(f);
+        /* Convert \\n marker strings into actual line boundaries. */
+        for(const char *p=bad[i];*p;p++){
+            if(p[0]=='\\\\'&&p[1]=='n'){
+                assert(fputc('\\n',f)!=EOF);
+                p++;
+            }else assert(fputc((unsigned char)*p,f)!=EOF);
+        }
+        assert(fclose(f)==0);
+        nx_film_menu m;
+        nx_film_menu_init(&m);
+        m.selected_id=103;m.cursor=4;m.page=7;
+        assert(nx_film_menu_load(&m,path)==-1);
+        assert(m.selected_id==103&&m.cursor==4&&m.page==7);
+    }
+    assert(remove(path)==0);
+    nx_film_menu m;nx_film_menu_init(&m);
+    m.selected_id=104;m.cursor=5;
+    assert(nx_film_menu_load(&m,path)==-1);
+    assert(m.selected_id==104&&m.cursor==5);
+}
+
 int main(void){
     nx_film_menu m;nx_film_menu_init(&m);
     assert(nx_film_count()==13&&m.selected_id==0);
@@ -35,6 +77,7 @@ int main(void){
     assert(n.selected_id==204&&n.cursor==12);
     assert(nx_film_lut_for_menu(&n,pixels)==0);
     assert(nx_film_menu_action(&n,NX_ACT_BACK)==0&&n.cursor==12);
-    puts("PASS fixed Film Simulator presets, cyclic rotation, V2 strength-free persistence and legacy config migration");
+    test_corrupt_config_never_changes_selection();
+    puts("PASS fixed Film Simulator presets, strict V1/V2 config, corrupt-file rejection, unchanged active selection and legacy migration");
     return 0;
 }
