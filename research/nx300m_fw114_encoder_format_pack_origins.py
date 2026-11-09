@@ -29,6 +29,65 @@ FIELDS = {
 }
 MAX_CANDIDATE_STORES = 24
 
+# Real opcode witnesses from the independently extracted third-party
+# FW1.14/1.15 libmm-photo.so CI study. Each adjacent MOV immediate and
+# direct STR to the frame slot is pinned. This is NOT a runtime value proof.
+# (field-name, direct-store PC, preceding MOV immediate)
+PINNED_DIRECT_WRITERS = {
+    "eImgYCCType": (
+        (0x34be4, 0),
+        (0x34c10, 0),
+        (0x34c40, 1),
+    ),
+    "eImgYCCPackType": (
+        (0x34c48, 0),
+        (0x34c74, 1),
+        (0x34ca4, 0),
+    ),
+}
+
+
+def pin_known_arm_direct_writer_values(proof: dict) -> dict:
+    """Pin the six actual source-backed direct stores; never infer branches."""
+    fields = proof["fields"]
+    if set(fields) != set(PINNED_DIRECT_WRITERS):
+        raise ValueError("FW Y/C type/pack writer fields changed")
+    evidence = {}
+    for name, exact in PINNED_DIRECT_WRITERS.items():
+        stores = fields[name]["direct_frame_pointer_store_candidates"]
+        observed = []
+        for item in stores:
+            move = item["immediate_preceding_mov_candidate"]
+            if (item["source_register"] != "r3" or
+                item["condition"] != "AL" or not move or
+                move["kind"] != "MOV_IMM" or
+                item["store_opcode"] != (
+                    "0xe50b3028" if name == "eImgYCCType" else "0xe50b302c"
+                )):
+                raise ValueError("Unexpected native field writer A32 operation")
+            observed.append((int(item["store_site"], 16), move["immediate"]))
+        if tuple(observed) != exact:
+            raise ValueError("Changed actual FW1.14/1.15 Y/C type/pack writer")
+        evidence[name] = {
+            "direct_store_count": len(observed),
+            "verified_direct_store_sites":
+                [f"0x{site:08x}" for site, _ in observed],
+            "statically_assigned_immediate_candidates":
+                [value for _, value in observed],
+            "direct_store_values_within_zero_or_one":
+                all(value in (0, 1) for _, value in observed),
+            "runtime_path_values_or_precedence_proven": False,
+            "unknown_indirect_stack_slot_writers_excluded": False,
+            "native_pixels_are_BT601_NV12_or_other_pack_proven": False,
+        }
+    return {
+        "pinned_fw114_115_known_direct_stores": evidence,
+        "six_native_opcodes_and_preceding_immediates_pinned": True,
+        "source_branch_path_exhaustive": False,
+        "camera_firmware_flash_permitted": False,
+    }
+
+
 
 def decode_arm_simple_mov(word: int, target_register: int) -> dict | None:
     """Only unconditional ARM32 MOV Rd,#imm / MOV Rd,Rm (no shifts)."""
@@ -150,7 +209,11 @@ def inspect_photo_elf(path):
     if fn["address"] != START or fn["size"] != BODY_BYTES:
         raise ValueError("FW1.14 encoder symbol differs from reference")
     words = photo.native_words(blob, loads, START, BODY_BYTES)
-    return trace_field_origins(words)
+    proof = trace_field_origins(words)
+    proof["actual_static_direct_writer_pins"] = pin_known_arm_direct_writer_values(
+        proof
+    )
+    return proof
 
 
 def compare_versions(fw114, fw115):
