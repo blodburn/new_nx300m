@@ -44,6 +44,17 @@ flashing remain explicitly unsupported.
 
 Host-only [Y/C420 + RGB manifest validation](docs/NX300M_CAPTURE_EVIDENCE_PREFLIGHT_20261102.md) checks three externally copied files, declared geometry, size and independent SHA-256 before experimental color-model analysis. It always refuses to certify same-stage camera provenance, NX300M native layout, ABI or firmware flash safety. Run `python3 research/test_nx300m_capture_manifest_gate.py` to reproduce 17 synthetic cases.
 
+## FW1.14 native Y/C getter-result provenance (2026-11-10)
+
+The offline ARM32 encoder analysis now resolves two
+`CYcc::GetType()` and two `CYcc::GetScanMode()` imported calls via
+native BL/PLT relocations, then checks their local return path
+`r0 -> r3 -> CMP/MOVNE/MOVEQ -> UXTB/CMP/BEQ` and the two
+unconditional fallback skip branches. This confirms **local native
+control-flow logic only**; receiver-object identity, runtime getter
+values, chroma memory packing and DMA ownership remain unknown.
+Read the [Y/C format and pack evidence](docs/NX300M_FW114_JPEG_YCC_FORMAT_PACK_ORIGINS_20261110.md).
+
 ## FW1.14 Y/C-type and pack local branch proof (2026-11-10)
 
 Four native A32 `UXTB r3,r3 → CMP r3,#0 → BEQ` sequences now have
