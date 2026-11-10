@@ -272,7 +272,7 @@ jobs:
               getter_links=proof["native_getter_return_boolean_paths"]
               if (not getter_links[
                   "four_native_imported_getter_calls_and_r0_r3_paths_verified"
-              ] or getter_links["four_local_zero_getter_tests"]!=4 or
+              ] or getter_links["four_local_getter_equality_tests"]!=4 or
                   getter_links["runtime_getter_values_or_actual_pixel_pack_proven"] or
                   getter_links["caller_receivers_or_cycc_object_identity_proven"] or
                   getter_links["complete_native_function_control_flow_verified"] or
@@ -287,20 +287,22 @@ jobs:
                   getter_cases=getter_links["getters"][field]
                   if len(getter_cases)!=2:
                       raise SystemExit("REJECT YCC getter case count")
-                  for trace in getter_cases:
+                  for case_number,trace in enumerate(getter_cases):
                       if (trace["imported_native_getter"]!=expected_getter or
+                          trace["compared_getter_return_value"]!=case_number or
                           trace["return_register"]!="r0" or
                           trace["return_copied_to"]!="r3" or
-                          trace["when_getter_returns_zero"]!="local_BEQ_not_taken" or
-                          trace["when_getter_returns_nonzero"]!="local_BEQ_taken" or
+                          trace["when_getter_equals_compared_value"]!="local_BEQ_not_taken" or
+                          trace["when_getter_differs_from_compared_value"]!="local_BEQ_taken" or
                           trace["live_runtime_return_value_proven"] or
                           trace["native_getter_receiver_pointer_proven"]):
                           raise SystemExit("REJECT YCC getter local value trace")
                       print("FW114_CYCC_GETTER",version,field,
                             trace["imported_native_getter"],
                             "call",trace["imported_callsite"],
-                            "zero_case_store",
-                            trace["direct_store_on_zero_return_if_sequential_entry"],
+                            "match_case",trace["compared_getter_return_value"],
+                            "matching_case_store",
+                            trace["direct_store_on_matching_return_if_sequential_entry"],
                             "real_result_known",trace["live_runtime_return_value_proven"])
               for field in fields:
                   field_guards=branch_guards["fields"][field]
