@@ -37,6 +37,38 @@ class NativeYccReceiverSourceTests(unittest.TestCase):
         self.assertFalse(report["native_camera_dma_cache_coherency_verified"])
         self.assertFalse(report["firmware_flash_permitted"])
 
+    def test_actual_fw114_115_four_receiver_opcode_pins(self):
+        words,proof=base()
+        report=source.trace_receiver_inputs(tuple(words),proof)
+        pinned=source.pin_verified_receiver_slot_sources(report)
+        self.assertTrue(pinned["four_receiver_r0_exact_arm_opcodes_verified"])
+        self.assertTrue(pinned["only_direct_fp_minus_100_writer_is_incoming_r1"])
+        self.assertEqual(len(pinned["pinned_native_receiver_sites"]),4)
+        self.assertFalse(pinned["runtime_cycc_object_pointer_equality_proven"])
+        self.assertFalse(pinned["physical_image_buffer_ownership_verified"])
+        self.assertFalse(pinned["camera_firmware_flash_permitted"])
+        for x in pinned["pinned_native_receiver_sites"]:
+            self.assertEqual(x["opcode"],"0xe51b0064")
+            self.assertEqual(x["source"],"LDR r0,[fp,-100]")
+
+    def test_r0_opcode_and_extra_writer_refused_as_real_fw_evidence(self):
+        words,proof=base()
+        for altered_pc,altered_opcode in (
+            (0x34be8,0xe51b0060),
+            (0x34c18,0xe1a00004),
+            (0x34c4c,0xe51b0060),
+            (0x34c7c,0xe51b0060),
+            (0x34b64,0xe50b2064),
+        ):
+            with self.subTest(pc=hex(altered_pc)):
+                modified=words.copy()
+                modified[(altered_pc-source.START)//4]=altered_opcode
+                witness=source.trace_receiver_inputs(tuple(modified),proof)
+                with self.assertRaisesRegex(
+                    ValueError,"frame-slot source|getter R0 receiver source"
+                ):
+                    source.pin_verified_receiver_slot_sources(witness)
+
     def test_different_receiver_r0_frame_slot_must_be_reported(self):
         words,proof=base()
         words[(0x34c18-source.START)//4]=0xe51b0060 # LDR r0,[fp,-96]
