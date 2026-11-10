@@ -36,6 +36,35 @@ research/nx300m_fw114_ycc_getter_receiver_sources.py:
    prologue, alternate source slot, unrelated r0 writer, additional
    direct stack writer and forged/malformed evidence.
 
+## Actual FW1.14 and FW1.15 mirror ELF result
+
+The offline native runner reported the same direct receiver source at
+all four exact getter callsites on **both** firmware versions:
+
+| Native getter | Call address | Final r0 instruction | Source offset |
+|---|---|---|---|
+| CYcc::GetType() #1 | 0x34bec | 0x34be8: e51b0064 | fp-100 |
+| CYcc::GetType() #2 | 0x34c1c | 0x34c18: e51b0064 | fp-100 |
+| CYcc::GetScanMode() #1 | 0x34c50 | 0x34c4c: e51b0064 | fp-100 |
+| CYcc::GetScanMode() #2 | 0x34c80 | 0x34c7c: e51b0064 | fp-100 |
+
+The only **direct** write to fp-100 found in the bounded 644-byte ARM
+function was the known r1 parameter save at 0x34b28.
+The CI now pins all four exact receiver opcodes and the one direct
+incoming r1 store. A change is a hard failure, not an inferred
+buffer identity.
+
+All four getters therefore read the same *source frame slot* in
+the examined native instruction stream. They likely receive the
+method's input CYcc reference if that local slot is not indirectly
+overwritten. This caveat matters: identical source slots do not
+authenticate the live pointer value, establish that no nonlocal
+writer changed it, or prove actual image memory lifecycle.
+
+The synthetic tests also demonstrate rejection of altered R0
+instructions, alternate frame offsets, additional direct slot writes,
+changed prologue, unsupported R0 source and forged prior evidence.
+
 ## Interpretation boundary
 
 Identical fp-relative source addresses are not proof of identical
