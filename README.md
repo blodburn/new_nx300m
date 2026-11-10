@@ -44,6 +44,16 @@ flashing remain explicitly unsupported.
 
 Host-only [Y/C420 + RGB manifest validation](docs/NX300M_CAPTURE_EVIDENCE_PREFLIGHT_20261102.md) checks three externally copied files, declared geometry, size and independent SHA-256 before experimental color-model analysis. It always refuses to certify same-stage camera provenance, NX300M native layout, ABI or firmware flash safety. Run `python3 research/test_nx300m_capture_manifest_gate.py` to reproduce 17 synthetic cases.
 
+## FW1.14 CYcc receiver argument tracing (2026-11-10)
+
+A new offline ARM32 audit traces the four native CYcc getter receiver
+arguments in `r0` to their immediate source instructions, with the
+function's incoming `r1` CYcc reference saved at `[fp,-100]`.
+It checks actual FW1.14 and FW1.15 third-party ELF bytes and lists
+direct slot overwrites separately. A shared frame slot is **not**
+physical camera object identity, image buffer ownership or DMA safety.
+See [read-only receiver proof](docs/NX300M_FW114_CYCC_GETTER_RECEIVER_R1_SLOT_20261110.md).
+
 ## FW1.14 native Y/C getter-result provenance (2026-11-10)
 
 The offline ARM32 encoder analysis now resolves two
