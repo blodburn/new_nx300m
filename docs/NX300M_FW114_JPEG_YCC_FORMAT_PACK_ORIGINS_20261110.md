@@ -95,7 +95,7 @@ calls from actual ARM BL -> PLT -> relocation -> demangled symbol. The
 pinned ARM instructions immediately after each call are:
 
   MOV r3,r0
-  CMP r3,#0
+  CMP r3,#case_value   [first=0, fallback=1]
   MOVNE r3,#0
   MOVEQ r3,#1
   UXTB r3,r3
@@ -103,18 +103,18 @@ pinned ARM instructions immediately after each call are:
   BEQ local_skip
 
 This is **boolean normalization** of the getter return value:
-when the getter returns zero, the adjacent BEQ is not taken and the
+when the getter returns the checked case value (0 in the first case,
+1 in the fallback), the adjacent BEQ is not taken and the matching
 direct constant writer follows in local straight-line execution.
-When it returns nonzero, the adjacent BEQ is taken and bypasses the
-direct writer. That observation is local to these instructions and
+Otherwise the BEQ is taken and bypasses that direct writer. That observation is local to these instructions and
 must not be generalized to execution of the whole method.
 
-| Field | Native imported getter call | Conditional direct writer if getter returns 0 |
-|---|---|---|
-| eImgYCCType | CYcc::GetType() at 0x34bec | 0x34c10 (writes 0) |
-| eImgYCCType | CYcc::GetType() at 0x34c1c | 0x34c40 (writes 1) |
-| eImgYCCPackType | CYcc::GetScanMode() at 0x34c50 | 0x34c74 (writes 1) |
-| eImgYCCPackType | CYcc::GetScanMode() at 0x34c80 | 0x34ca4 (writes 0) |
+| Field | Native imported getter call | CMP case value | Conditional direct writer when case matches |
+|---|---|---:|---|
+| eImgYCCType | CYcc::GetType() at 0x34bec | 0 | 0x34c10 (writes 0) |
+| eImgYCCType | CYcc::GetType() at 0x34c1c | 1 | 0x34c40 (writes 1) |
+| eImgYCCPackType | CYcc::GetScanMode() at 0x34c50 | 0 | 0x34c74 (writes 1) |
+| eImgYCCPackType | CYcc::GetScanMode() at 0x34c80 | 1 | 0x34ca4 (writes 0) |
 
 Two unconditional A32 B instructions provide local branch-out paths
 after the first direct store:
