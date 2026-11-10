@@ -67,6 +67,31 @@ def fixture_actual_guard_pairs():
     return words
 
 
+def fixture_getter_return_chain():
+    """Synthetic A32 with known version-local getter and conditional paths."""
+    words=fixture_actual_guard_pairs()
+    named=[]
+    for field,calls in source.GETTER_CALLS.items():
+        for call_pc,getter,store_pc in calls:
+            words[(call_pc-source.START)//4]=0xeb000000
+            for delta,opcode,_ in source.GETTER_BOOLEAN_SEQUENCE:
+                words[(call_pc+delta-source.START)//4]=opcode
+            named.append({
+                "callsite":f"0x{call_pc:08x}",
+                "target_kind":"import",
+                "target_demangled":getter,
+            })
+    for pc,op,_,_ in source.FALLBACK_SKIP_BRANCHES:
+        words[(pc-source.START)//4]=op
+    guards=source.pin_local_ycc_branch_guards(
+        tuple(words),
+        source.pin_known_arm_direct_writer_values(
+            source.trace_field_origins(tuple(words))
+        )
+    )
+    return words,named,guards
+
+
 class EncoderYccFieldOriginTests(unittest.TestCase):
     def test_two_separate_native_stack_slot_writer_candidates(self):
         proof = source.trace_field_origins(tuple(fixture()))
@@ -215,6 +240,87 @@ class EncoderYccFieldOriginTests(unittest.TestCase):
             with self.subTest(word=value,site=pc):
                 with self.assertRaises(ValueError):
                     source.a32_beq_direct_target(value, pc)
+
+    def test_imported_getter_to_r0_r3_bool_and_branch_paths(self):
+        words,named,guards=fixture_getter_return_chain()
+        x=source.pin_getter_result_boolean_paths(tuple(words),named,guards)
+        self.assertTrue(
+            x["four_native_imported_getter_calls_and_r0_r3_paths_verified"]
+        )
+        self.assertEqual(x["four_local_zero_getter_tests"],4)
+        self.assertEqual(len(x["first_case_unconditional_fallback_skips"]),2)
+        self.assertEqual(
+            [a["imported_native_getter"] for a in x["getters"]["eImgYCCType"]],
+            ["CYcc::GetType()","CYcc::GetType()"]
+        )
+        self.assertEqual(
+            [a["imported_native_getter"]
+             for a in x["getters"]["eImgYCCPackType"]],
+            ["CYcc::GetScanMode()","CYcc::GetScanMode()"]
+        )
+        for group in x["getters"].values():
+            for trace in group:
+                self.assertEqual(trace["return_register"],"r0")
+                self.assertEqual(trace["return_copied_to"],"r3")
+                self.assertEqual(
+                    trace["when_getter_returns_zero"],"local_BEQ_not_taken"
+                )
+                self.assertEqual(
+                    trace["when_getter_returns_nonzero"],"local_BEQ_taken"
+                )
+                self.assertFalse(trace["native_getter_receiver_pointer_proven"])
+                self.assertFalse(trace["live_runtime_return_value_proven"])
+        self.assertFalse(x["runtime_getter_values_or_actual_pixel_pack_proven"])
+        self.assertFalse(x["firmware_flash_permitted"])
+
+    def test_getter_pltreloc_name_cannot_be_inferred_from_callsite_only(self):
+        words,named,guards=fixture_getter_return_chain()
+        for mutated in (
+            [dict(v,target_demangled="CYcc::GetScanMode()")
+             if v["callsite"]=="0x00034bec" else v for v in named],
+            [dict(v,target_kind="local")
+             if v["callsite"]=="0x00034c50" else v for v in named],
+            [v for v in named if v["callsite"]!="0x00034c80"],
+            named+[named[0]],
+        ):
+            with self.subTest(evidence=str(mutated)[:100]):
+                with self.assertRaisesRegex(
+                    ValueError,"getter|Ambiguous"
+                ):
+                    source.pin_getter_result_boolean_paths(
+                        tuple(words),mutated,guards
+                    )
+
+    def test_modified_getter_result_to_boolean_opcodes_fail_closed(self):
+        words,named,guards=fixture_getter_return_chain()
+        for pc,changed in (
+            (0x34bec,0xe1a00000),
+            (0x34bf0,0xe1a03001),
+            (0x34bf4,0xe3530001),
+            (0x34bf8,0x03a03000),
+            (0x34bfc,0x13a03001),
+            (0x34c20,0xe1a03001),
+            (0x34c58,0xe3530001),
+            (0x34c8c,0x13a03001),
+        ):
+            with self.subTest(pc=hex(pc)):
+                bad=words.copy()
+                bad[(pc-source.START)//4]=changed
+                with self.assertRaisesRegex(ValueError,"getter|return-to-boolean"):
+                    source.pin_getter_result_boolean_paths(
+                        tuple(bad),named,guards
+                    )
+
+    def test_modified_unconditional_skip_to_fallback_fails_closed(self):
+        words,named,guards=fixture_getter_return_chain()
+        for pc in (0x34c14,0x34c78):
+            with self.subTest(pc=hex(pc)):
+                bad=words.copy()
+                bad[(pc-source.START)//4]=0xea000009
+                with self.assertRaisesRegex(ValueError, "skip branch"):
+                    source.pin_getter_result_boolean_paths(
+                        tuple(bad),named,guards
+                    )
 
     def test_changed_native_jpeg_argument_load_rejected(self):
         words = fixture()
