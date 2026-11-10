@@ -273,6 +273,15 @@ jobs:
                   branch_guards["firmware_flash_permitted"]
               ):
                   raise SystemExit("REJECT unsafe or changed native YCC guard paths")
+              receiver_pins=proof["native_ycc_getter_receiver_opcode_pins"]
+              if (not receiver_pins["four_receiver_r0_exact_arm_opcodes_verified"] or
+                  not receiver_pins["only_direct_fp_minus_100_writer_is_incoming_r1"] or
+                  len(receiver_pins["pinned_native_receiver_sites"])!=4 or
+                  receiver_pins["runtime_cycc_object_pointer_equality_proven"] or
+                  receiver_pins["indirect_stack_or_pointer_aliasing_excluded"] or
+                  receiver_pins["physical_image_buffer_ownership_verified"] or
+                  receiver_pins["camera_firmware_flash_permitted"]):
+                  raise SystemExit("REJECT changed native CYcc receiver R0 opcode pins")
               receiver=proof["native_ycc_getter_receiver_sources"]
               if (receiver["recognized_getter_calls"]!=4 or
                   receiver["incoming_r1_save_site"]!="0x00034b28" or
