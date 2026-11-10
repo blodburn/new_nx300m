@@ -72,10 +72,12 @@ def fixture_getter_return_chain():
     words=fixture_actual_guard_pairs()
     named=[]
     for field,calls in source.GETTER_CALLS.items():
-        for call_pc,getter,store_pc in calls:
+        for call_pc,getter,store_pc,case_value in calls:
             words[(call_pc-source.START)//4]=0xeb000000
             for delta,opcode,_ in source.GETTER_BOOLEAN_SEQUENCE:
-                words[(call_pc+delta-source.START)//4]=opcode
+                words[(call_pc+delta-source.START)//4]=(
+                    0xe3530000 | case_value if opcode is None else opcode
+                )
             named.append({
                 "callsite":f"0x{call_pc:08x}",
                 "target_kind":"import",
@@ -247,7 +249,7 @@ class EncoderYccFieldOriginTests(unittest.TestCase):
         self.assertTrue(
             x["four_native_imported_getter_calls_and_r0_r3_paths_verified"]
         )
-        self.assertEqual(x["four_local_zero_getter_tests"],4)
+        self.assertEqual(x["four_local_getter_equality_tests"],4)
         self.assertEqual(len(x["first_case_unconditional_fallback_skips"]),2)
         self.assertEqual(
             [a["imported_native_getter"] for a in x["getters"]["eImgYCCType"]],
@@ -263,13 +265,19 @@ class EncoderYccFieldOriginTests(unittest.TestCase):
                 self.assertEqual(trace["return_register"],"r0")
                 self.assertEqual(trace["return_copied_to"],"r3")
                 self.assertEqual(
-                    trace["when_getter_returns_zero"],"local_BEQ_not_taken"
+                    trace["when_getter_equals_compared_value"],"local_BEQ_not_taken"
                 )
                 self.assertEqual(
-                    trace["when_getter_returns_nonzero"],"local_BEQ_taken"
+                    trace["when_getter_differs_from_compared_value"],"local_BEQ_taken"
                 )
                 self.assertFalse(trace["native_getter_receiver_pointer_proven"])
                 self.assertFalse(trace["live_runtime_return_value_proven"])
+        self.assertEqual(
+            [i["compared_getter_return_value"] for i in x["getters"]["eImgYCCType"]],[0,1]
+        )
+        self.assertEqual(
+            [i["compared_getter_return_value"] for i in x["getters"]["eImgYCCPackType"]],[0,1]
+        )
         self.assertFalse(x["runtime_getter_values_or_actual_pixel_pack_proven"])
         self.assertFalse(x["firmware_flash_permitted"])
 
@@ -300,6 +308,7 @@ class EncoderYccFieldOriginTests(unittest.TestCase):
             (0x34bf8,0x03a03000),
             (0x34bfc,0x13a03001),
             (0x34c20,0xe1a03001),
+            (0x34c24,0xe3530000),
             (0x34c58,0xe3530001),
             (0x34c8c,0x13a03001),
         ):
