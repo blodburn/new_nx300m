@@ -204,6 +204,147 @@ def pin_local_ycc_branch_guards(
     }
 
 
+# Exact version-local native imported getter calls and their adjacent A32
+# return-value-to-boolean sequence. Verified by independent PLT relocation
+# name resolution (no guessed symbols from a nearby BL instruction).
+# (call site, getter symbol, associated guarded field writer site)
+GETTER_CALLS = {
+    "eImgYCCType": (
+        (0x34bec, "CYcc::GetType()", 0x34c10),
+        (0x34c1c, "CYcc::GetType()", 0x34c40),
+    ),
+    "eImgYCCPackType": (
+        (0x34c50, "CYcc::GetScanMode()", 0x34c74),
+        (0x34c80, "CYcc::GetScanMode()", 0x34ca4),
+    ),
+}
+GETTER_BOOLEAN_SEQUENCE = (
+    (4, 0xe1a03000, "MOV r3,r0"),
+    (8, 0xe3530000, "CMP r3,#0"),
+    (12, 0x13a03000, "MOVNE r3,#0"),
+    (16, 0x03a03001, "MOVEQ r3,#1"),
+    (20, EXPECTED_UXTB_R3_R3, "UXTB r3,r3"),
+    (24, EXPECTED_CMP_R3_ZERO, "CMP r3,#0"),
+)
+# A nonzero getter result bypasses the first field write and enters the
+# fallback getter block; after first store an unconditional B bypasses it.
+FALLBACK_SKIP_BRANCHES = (
+    (0x34c14, 0xea00000a, 0x34c44, 0x34c18),
+    (0x34c78, 0xea00000a, 0x34ca8, 0x34c7c),
+)
+
+
+def pin_getter_result_boolean_paths(
+    words: tuple[int, ...], named_calls: list[dict],
+    source_guards: dict,
+) -> dict:
+    """Prove four local imported getter -> r0 -> r3 -> branch sequences.
+
+    The getter names must be resolved via actual .rel.plt symbols. No real
+    camera callback execution, native getter argument object identity,
+    indirect stack aliases or full reaching definitions are proven.
+    """
+    if (len(words) != BODY_BYTES//4 or
+        any(type(w) is not int or not 0 <= w <= 0xffffffff for w in words) or
+        source_guards.get("direct_zero_test_guard_count") != 4):
+        raise ValueError("Wrong FW native getter-source body/branch guards")
+    actual = {}
+    for edge in named_calls:
+        if not isinstance(edge, dict):
+            raise ValueError("Wrong native imported-call witness format")
+        site = edge.get("callsite")
+        if not isinstance(site, str):
+            raise ValueError("Invalid native getter callsite record")
+        try:
+            address = int(site,16)
+        except ValueError as exc:
+            raise ValueError("Invalid imported callsite address") from exc
+        if address in actual:
+            raise ValueError("Ambiguous FW native imported getter callsite")
+        actual[address] = edge
+    evidence = {}
+    for field, pairs in GETTER_CALLS.items():
+        native_guards = source_guards["fields"][field]["pinned_local_beq_skip_edges"]
+        if len(native_guards) != len(pairs):
+            raise ValueError("Missing associated native field branches")
+        result = []
+        for i,(call_site,getter,writer_site) in enumerate(pairs):
+            idx = (call_site-START)//4
+            # ARM-state unconditional BL immediate. Relocation resolution
+            # below verifies exactly which native symbol is called.
+            if (idx<0 or idx>=len(words) or
+                words[idx] >> 24 != 0xeb):
+                raise ValueError("Changed FW native getter BL instruction")
+            edge = actual.get(call_site)
+            if (not edge or edge.get("target_kind")!="import" or
+                edge.get("target_demangled")!=getter):
+                raise ValueError("Changed FW native getter/PLT symbol link")
+            raw = []
+            for delta, opcode, assembly in GETTER_BOOLEAN_SEQUENCE:
+                pc = call_site + delta
+                if pc<START or pc>=START+4*len(words) or (
+                    words[(pc-START)//4] != opcode
+                ):
+                    raise ValueError(
+                        f"Changed {getter} return-to-boolean ARM code at {pc:#x}"
+                    )
+                raw.append({"site":f"0x{pc:08x}",
+                            "opcode":f"0x{opcode:08x}",
+                            "instruction":assembly})
+            zero_branch = native_guards[i]
+            if (zero_branch["store_site"] != f"0x{writer_site:08x}" or
+                zero_branch["zero_compare_site"] != f"0x{call_site+24:08x}" or
+                zero_branch["branch_site"] != f"0x{call_site+28:08x}" or
+                zero_branch["bypassed_store_site"] != f"0x{writer_site:08x}"):
+                raise ValueError("Getter output does not feed pinned local BEQ")
+            result.append({
+                "imported_native_getter": getter,
+                "imported_callsite": f"0x{call_site:08x}",
+                "return_register": "r0",
+                "return_copied_to": "r3",
+                "booleanized_local_r3": True,
+                "when_getter_returns_zero": "local_BEQ_not_taken",
+                "when_getter_returns_nonzero": "local_BEQ_taken",
+                "direct_store_on_zero_return_if_sequential_entry":
+                    f"0x{writer_site:08x}",
+                "native_arm_witnesses": raw,
+                "native_getter_receiver_pointer_proven": False,
+                "live_runtime_return_value_proven": False,
+                "all_reaching_definitions_and_side_effects_proven": False,
+            })
+        evidence[field]=result
+    skip_edges=[]
+    for site, opcode, target, fallback_begin in FALLBACK_SKIP_BRANCHES:
+        idx=(site-START)//4
+        if idx < 0 or idx >= len(words) or words[idx]!=opcode:
+            raise ValueError("Changed FW native success-path skip branch")
+        off=opcode&0xffffff
+        if off&0x800000:
+            off-=0x1000000
+        observed=site+8+off*4
+        if observed!=target or fallback_begin!=site+4 or target<=fallback_begin:
+            raise ValueError("Wrong FW native first-getter skip target")
+        skip_edges.append({
+            "branch_site":f"0x{site:08x}",
+            "branch_target":f"0x{target:08x}",
+            "bypassed_fallback_start":f"0x{fallback_begin:08x}",
+            "native_opcode":f"0x{opcode:08x}",
+            "runtime_branch_execution_verified":False,
+        })
+    return {
+        "scope": "SOURCE_BACKED_LOCAL_CYCC_GETTER_RETURN_TO_JPEG_FIELDS",
+        "four_native_imported_getter_calls_and_r0_r3_paths_verified":True,
+        "getters":evidence,
+        "first_case_unconditional_fallback_skips":skip_edges,
+        "four_local_zero_getter_tests":4,
+        "caller_receivers_or_cycc_object_identity_proven":False,
+        "runtime_getter_values_or_actual_pixel_pack_proven":False,
+        "complete_native_function_control_flow_verified":False,
+        "camera_dma_ownership_or_cache_sync_proven":False,
+        "firmware_flash_permitted":False,
+    }
+
+
 def decode_arm_simple_mov(word: int, target_register: int) -> dict | None:
     """Only unconditional ARM32 MOV Rd,#imm / MOV Rd,Rm (no shifts)."""
     if not isinstance(word, int) or not 0 <= word <= 0xffffffff:
@@ -330,6 +471,23 @@ def inspect_photo_elf(path):
     )
     proof["native_local_conditional_branch_guards"] = pin_local_ycc_branch_guards(
         words, proof["actual_static_direct_writer_pins"]
+    )
+    # Independently resolve the imported ARM BL targets rather than
+    # treating nearby code as proof of any particular GetType/GetScanMode.
+    import nx300m_fw114_sif_callgraph as callgraph
+    import nx300m_native_jpeg_abi_boundary_audit as jpeg
+    defined=callgraph.defined_symbols(path)
+    relocations=jpeg.relocations(
+        symbols.arm.offline_tool(["readelf","-Wr",str(path)])
+    )
+    native_calls=photo.decode_edges(
+        blob,loads,defined,relocations,index,"CMmDeviceDriver::EncodeYcc("
+    )
+    if not native_calls["all_named_edges_reported"]:
+        raise ValueError("Incomplete native getter callsite evidence")
+    proof["native_getter_return_boolean_paths"] = pin_getter_result_boolean_paths(
+        words,native_calls["named_call_edges"],
+        proof["native_local_conditional_branch_guards"]
     )
     return proof
 
