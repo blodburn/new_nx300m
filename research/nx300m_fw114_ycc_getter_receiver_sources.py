@@ -21,6 +21,74 @@ SAVE_OPCODE=0xe50b1064  # STR r1,[fp,#-100] (AAPCS CYcc& parameter)
 SLOT=-100
 
 
+# Exact local ARM32 r0 writers observed independently in two extracted
+# mirrored firmware versions. One output is the *same FRAME SLOT*, not
+# an authenticated identity assertion about the CYcc object.
+PINNED_RECEIVER_R0_WRITERS = {
+    0x34bec:0x34be8,
+    0x34c1c:0x34c18,
+    0x34c50:0x34c4c,
+    0x34c80:0x34c7c,
+}
+PINNED_RECEIVER_OPCODE=0xe51b0064  # LDR r0,[fp,-100]
+
+
+def pin_verified_receiver_slot_sources(report:dict)->dict:
+    """Reject change to the exact 4 real native receiver instructions."""
+    if (not isinstance(report,dict) or
+        report.get("recognized_getter_calls")!=4 or
+        report.get("incoming_r1_saved_to_fp_offset")!=SLOT or
+        report.get("incoming_r1_save_site")!=f"0x{SAVE_SITE:08x}" or
+        report.get("only_one_direct_fp_slot_store_before_getters") is not True or
+        report.get("four_getter_r0_setup_uses_incoming_r1_frame_slot") is not True or
+        report.get("incoming_r1_runtime_object_same_across_all_calls_proven") is not False or
+        report.get("indirect_stack_alias_writes_excluded") is not False or
+        report.get("native_camera_dma_cache_coherency_verified") is not False or
+        report.get("firmware_flash_permitted") is not False):
+        raise ValueError("FW native r1/r0 frame-slot source changed or overclaimed")
+    rows=report.get("getter_receiver_evidence")
+    if not isinstance(rows,list) or len(rows)!=4:
+        raise ValueError("Missing four native getter receiver input witnesses")
+    observed={}
+    for row in rows:
+        if not isinstance(row,dict):
+            raise ValueError("Invalid native receiver record")
+        try:
+            site=int(row["callsite"],16)
+            writer=int(row["r0_final_writer_site"],16)
+            opcode=int(row["r0_final_writer_opcode"],16)
+        except (KeyError,ValueError,TypeError) as exc:
+            raise ValueError("Invalid native receiver opcode record") from exc
+        if site in observed or (
+            site not in PINNED_RECEIVER_R0_WRITERS
+        ) or writer!=PINNED_RECEIVER_R0_WRITERS[site] or (
+            opcode!=PINNED_RECEIVER_OPCODE or
+            row["r0_final_writer_kind"]!="LDR_r0_from_fp_immediate" or
+            row["r0_frame_slot_offset"]!=SLOT or
+            row["same_slot_as_saved_incoming_r1"] is not True or
+            row["runtime_receiver_pointer_identity_verified"] is not False
+        ):
+            raise ValueError("Changed FW native getter R0 receiver source")
+        observed[site]=writer
+    if observed!=PINNED_RECEIVER_R0_WRITERS:
+        raise ValueError("Incomplete exact FW native getter R0 receiver sources")
+    return {
+        "four_receiver_r0_exact_arm_opcodes_verified":True,
+        "only_direct_fp_minus_100_writer_is_incoming_r1":True,
+        "pinned_native_receiver_sites":[
+            {"callsite":f"0x{site:08x}",
+             "writer":f"0x{writer:08x}",
+             "opcode":f"0x{PINNED_RECEIVER_OPCODE:08x}",
+             "source":"LDR r0,[fp,-100]"}
+            for site,writer in sorted(observed.items())
+        ],
+        "runtime_cycc_object_pointer_equality_proven":False,
+        "indirect_stack_or_pointer_aliasing_excluded":False,
+        "physical_image_buffer_ownership_verified":False,
+        "camera_firmware_flash_permitted":False,
+    }
+
+
 def trace_receiver_inputs(words:tuple[int,...],getter_paths:dict)->dict:
     """Decode four final local R0 setup words before named native getter BLs.
 
