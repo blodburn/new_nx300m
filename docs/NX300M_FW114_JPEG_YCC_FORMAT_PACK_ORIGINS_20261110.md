@@ -29,7 +29,7 @@ per-frame fields were previously untraced.
   writer when branches or repeated stores exist.
 - Native FW1.14 and FW1.15 audit report store-candidate counts
   separately. The offline CI rejects missing/altered ABI instructions.
-- Ten synthetic tests validate normal origins, ambiguous multiple
+- Fourteen synthetic tests validate normal origins, ambiguous multiple
   stores, missing writers, mutated known instructions and rejection
   of conditional/shifted register claims.
 
@@ -87,6 +87,50 @@ Native CI pins all four A32 sequences in both extracted versions.
 It fails if the expected UXTB, CMP, BEQ, target, or adjacent
 writer changes. Additional synthetic tests check modified branches,
 wrong comparisons and signed immediate decoding.
+
+## Native getter return values to conditional store guards
+
+The offline native ELF imported-call lookup resolves the following four
+calls from actual ARM BL -> PLT -> relocation -> demangled symbol. The
+pinned ARM instructions immediately after each call are:
+
+  MOV r3,r0
+  CMP r3,#0
+  MOVNE r3,#0
+  MOVEQ r3,#1
+  UXTB r3,r3
+  CMP r3,#0
+  BEQ local_skip
+
+This is **boolean normalization** of the getter return value:
+when the getter returns zero, the adjacent BEQ is not taken and the
+direct constant writer follows in local straight-line execution.
+When it returns nonzero, the adjacent BEQ is taken and bypasses the
+direct writer. That observation is local to these instructions and
+must not be generalized to execution of the whole method.
+
+| Field | Native imported getter call | Conditional direct writer if getter returns 0 |
+|---|---|---|
+| eImgYCCType | CYcc::GetType() at 0x34bec | 0x34c10 (writes 0) |
+| eImgYCCType | CYcc::GetType() at 0x34c1c | 0x34c40 (writes 1) |
+| eImgYCCPackType | CYcc::GetScanMode() at 0x34c50 | 0x34c74 (writes 1) |
+| eImgYCCPackType | CYcc::GetScanMode() at 0x34c80 | 0x34ca4 (writes 0) |
+
+Two unconditional A32 B instructions provide local branch-out paths
+after the first direct store:
+- At 0x34c14, B to 0x34c44, bypassing fallback at 0x34c18.
+- At 0x34c78, B to 0x34ca8, bypassing fallback at 0x34c7c.
+
+The native analyzer rejects any change to four function-call bindings,
+the r0/r3, CMP, MOVNE/MOVEQ or UXTB code, the local BEQ evidence,
+or either unconditional B instruction.
+
+**Unresolved:** the receiver object address passed to each CYcc getter,
+whether both calls query the same or different CYcc objects, the
+actual GetType/GetScanMode return values on a camera, potential indirect
+frame-stack stores, other control-flow entries, and chroma byte packing
+or DMA validity. No Samsung enum meanings have been asserted. These
+local return-value chains are **not** proof of device-safe image buffers.
 
 ## Interpretation
 
