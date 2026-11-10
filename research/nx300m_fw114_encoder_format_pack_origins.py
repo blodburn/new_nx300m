@@ -210,17 +210,17 @@ def pin_local_ycc_branch_guards(
 # (call site, getter symbol, associated guarded field writer site)
 GETTER_CALLS = {
     "eImgYCCType": (
-        (0x34bec, "CYcc::GetType()", 0x34c10),
-        (0x34c1c, "CYcc::GetType()", 0x34c40),
+        (0x34bec, "CYcc::GetType()", 0x34c10, 0),
+        (0x34c1c, "CYcc::GetType()", 0x34c40, 1),
     ),
     "eImgYCCPackType": (
-        (0x34c50, "CYcc::GetScanMode()", 0x34c74),
-        (0x34c80, "CYcc::GetScanMode()", 0x34ca4),
+        (0x34c50, "CYcc::GetScanMode()", 0x34c74, 0),
+        (0x34c80, "CYcc::GetScanMode()", 0x34ca4, 1),
     ),
 }
 GETTER_BOOLEAN_SEQUENCE = (
     (4, 0xe1a03000, "MOV r3,r0"),
-    (8, 0xe3530000, "CMP r3,#0"),
+    (8, None, "CMP r3,#case"),
     (12, 0x13a03000, "MOVNE r3,#0"),
     (16, 0x03a03001, "MOVEQ r3,#1"),
     (20, EXPECTED_UXTB_R3_R3, "UXTB r3,r3"),
@@ -238,7 +238,7 @@ def pin_getter_result_boolean_paths(
     words: tuple[int, ...], named_calls: list[dict],
     source_guards: dict,
 ) -> dict:
-    """Prove four local imported getter -> r0 -> r3 -> branch sequences.
+    """Prove four local imported getter -> r0 -> r3 -> equality sequences.
 
     The getter names must be resolved via actual .rel.plt symbols. No real
     camera callback execution, native getter argument object identity,
@@ -268,7 +268,7 @@ def pin_getter_result_boolean_paths(
         if len(native_guards) != len(pairs):
             raise ValueError("Missing associated native field branches")
         result = []
-        for i,(call_site,getter,writer_site) in enumerate(pairs):
+        for i,(call_site,getter,writer_site,case_value) in enumerate(pairs):
             idx = (call_site-START)//4
             # ARM-state unconditional BL immediate. Relocation resolution
             # below verifies exactly which native symbol is called.
@@ -282,15 +282,19 @@ def pin_getter_result_boolean_paths(
             raw = []
             for delta, opcode, assembly in GETTER_BOOLEAN_SEQUENCE:
                 pc = call_site + delta
+                expected = (0xe3530000 | case_value) if opcode is None else opcode
                 if pc<START or pc>=START+4*len(words) or (
-                    words[(pc-START)//4] != opcode
+                    words[(pc-START)//4] != expected
                 ):
+                    actual=(f"0x{words[(pc-START)//4]:08x}"
+                            if START<=pc<START+4*len(words) else "out-of-bounds")
                     raise ValueError(
-                        f"Changed {getter} return-to-boolean ARM code at {pc:#x}"
+                        f"Changed {getter} return-to-boolean ARM code at "
+                        f"{pc:#x}; expected 0x{expected:08x}, found {actual}"
                     )
                 raw.append({"site":f"0x{pc:08x}",
-                            "opcode":f"0x{opcode:08x}",
-                            "instruction":assembly})
+                            "opcode":f"0x{expected:08x}",
+                            "instruction":assembly.replace("#case",f"#{case_value}")})
             zero_branch = native_guards[i]
             if (zero_branch["store_site"] != f"0x{writer_site:08x}" or
                 zero_branch["zero_compare_site"] != f"0x{call_site+24:08x}" or
@@ -303,9 +307,10 @@ def pin_getter_result_boolean_paths(
                 "return_register": "r0",
                 "return_copied_to": "r3",
                 "booleanized_local_r3": True,
-                "when_getter_returns_zero": "local_BEQ_not_taken",
-                "when_getter_returns_nonzero": "local_BEQ_taken",
-                "direct_store_on_zero_return_if_sequential_entry":
+                "compared_getter_return_value":case_value,
+                "when_getter_equals_compared_value":"local_BEQ_not_taken",
+                "when_getter_differs_from_compared_value":"local_BEQ_taken",
+                "direct_store_on_matching_return_if_sequential_entry":
                     f"0x{writer_site:08x}",
                 "native_arm_witnesses": raw,
                 "native_getter_receiver_pointer_proven": False,
@@ -336,7 +341,7 @@ def pin_getter_result_boolean_paths(
         "four_native_imported_getter_calls_and_r0_r3_paths_verified":True,
         "getters":evidence,
         "first_case_unconditional_fallback_skips":skip_edges,
-        "four_local_zero_getter_tests":4,
+        "four_local_getter_equality_tests":4,
         "caller_receivers_or_cycc_object_identity_proven":False,
         "runtime_getter_values_or_actual_pixel_pack_proven":False,
         "complete_native_function_control_flow_verified":False,
