@@ -494,6 +494,15 @@ def inspect_photo_elf(path):
         words,native_calls["named_call_edges"],
         proof["native_local_conditional_branch_guards"]
     )
+    # A separate receiver audit records exact R0 setup at the four calls.
+    # It never promotes static same-frame-slot evidence to physical
+    # pointer identity, YCC buffer lifetime or native DMA readiness.
+    import nx300m_fw114_ycc_getter_receiver_sources as receiver_sources
+    proof["native_ycc_getter_receiver_sources"] = (
+        receiver_sources.trace_receiver_inputs(
+            words,proof["native_getter_return_boolean_paths"]
+        )
+    )
     return proof
 
 
