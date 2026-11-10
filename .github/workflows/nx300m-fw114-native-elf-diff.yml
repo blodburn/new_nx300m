@@ -269,6 +269,41 @@ jobs:
                   branch_guards["firmware_flash_permitted"]
               ):
                   raise SystemExit("REJECT unsafe or changed native YCC guard paths")
+              getter_links=proof["native_getter_return_boolean_paths"]
+              if (not getter_links[
+                  "four_native_imported_getter_calls_and_r0_r3_paths_verified"
+              ] or getter_links["four_local_getter_equality_tests"]!=4 or
+                  getter_links["runtime_getter_values_or_actual_pixel_pack_proven"] or
+                  getter_links["caller_receivers_or_cycc_object_identity_proven"] or
+                  getter_links["complete_native_function_control_flow_verified"] or
+                  getter_links["camera_dma_ownership_or_cache_sync_proven"] or
+                  getter_links["firmware_flash_permitted"] or
+                  len(getter_links["first_case_unconditional_fallback_skips"])!=2):
+                  raise SystemExit("REJECT YCC getter-result native ARM source")
+              for field, expected_getter in (
+                  ("eImgYCCType","CYcc::GetType()"),
+                  ("eImgYCCPackType","CYcc::GetScanMode()")
+              ):
+                  getter_cases=getter_links["getters"][field]
+                  if len(getter_cases)!=2:
+                      raise SystemExit("REJECT YCC getter case count")
+                  for case_number,trace in enumerate(getter_cases):
+                      if (trace["imported_native_getter"]!=expected_getter or
+                          trace["compared_getter_return_value"]!=case_number or
+                          trace["return_register"]!="r0" or
+                          trace["return_copied_to"]!="r3" or
+                          trace["when_getter_equals_compared_value"]!="local_BEQ_not_taken" or
+                          trace["when_getter_differs_from_compared_value"]!="local_BEQ_taken" or
+                          trace["live_runtime_return_value_proven"] or
+                          trace["native_getter_receiver_pointer_proven"]):
+                          raise SystemExit("REJECT YCC getter local value trace")
+                      print("FW114_CYCC_GETTER",version,field,
+                            trace["imported_native_getter"],
+                            "call",trace["imported_callsite"],
+                            "match_case",trace["compared_getter_return_value"],
+                            "matching_case_store",
+                            trace["direct_store_on_matching_return_if_sequential_entry"],
+                            "real_result_known",trace["live_runtime_return_value_proven"])
               for field in fields:
                   field_guards=branch_guards["fields"][field]
                   if (len(field_guards["pinned_local_beq_skip_edges"])!=2 or
