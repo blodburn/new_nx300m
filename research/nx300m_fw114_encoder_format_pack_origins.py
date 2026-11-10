@@ -503,6 +503,11 @@ def inspect_photo_elf(path):
             words,proof["native_getter_return_boolean_paths"]
         )
     )
+    proof["native_ycc_getter_receiver_opcode_pins"] = (
+        receiver_sources.pin_verified_receiver_slot_sources(
+            proof["native_ycc_getter_receiver_sources"]
+        )
+    )
     return proof
 
 
