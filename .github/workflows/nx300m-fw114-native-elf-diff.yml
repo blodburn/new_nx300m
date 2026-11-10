@@ -21,6 +21,8 @@ on:
       - 'research/test_nx300m_fw114_hal_table_plus8_audit.py'
       - 'research/nx300m_fw114_photo_ycc_copy_boundary.py'
       - 'research/nx300m_fw114_encoder_format_pack_origins.py'
+      - 'research/nx300m_fw114_ycc_getter_receiver_sources.py'
+      - 'research/test_nx300m_fw114_ycc_getter_receiver_sources.py'
       - 'research/test_nx300m_fw114_encoder_format_pack_origins.py'
       - 'research/test_nx300m_fw114_photo_ycc_copy_boundary.py'
       - 'research/nx300m_fw114_photo_buffer_lifetime.py'
@@ -82,6 +84,8 @@ on:
       - 'research/test_nx300m_fw114_hal_table_plus8_audit.py'
       - 'research/nx300m_fw114_photo_ycc_copy_boundary.py'
       - 'research/nx300m_fw114_encoder_format_pack_origins.py'
+      - 'research/nx300m_fw114_ycc_getter_receiver_sources.py'
+      - 'research/test_nx300m_fw114_ycc_getter_receiver_sources.py'
       - 'research/test_nx300m_fw114_encoder_format_pack_origins.py'
       - 'research/test_nx300m_fw114_photo_ycc_copy_boundary.py'
       - 'research/nx300m_fw114_photo_buffer_lifetime.py'
@@ -269,6 +273,32 @@ jobs:
                   branch_guards["firmware_flash_permitted"]
               ):
                   raise SystemExit("REJECT unsafe or changed native YCC guard paths")
+              receiver=proof["native_ycc_getter_receiver_sources"]
+              if (receiver["recognized_getter_calls"]!=4 or
+                  receiver["incoming_r1_save_site"]!="0x00034b28" or
+                  receiver["incoming_r1_saved_to_fp_offset"]!=-100 or
+                  receiver["incoming_r1_runtime_object_same_across_all_calls_proven"] or
+                  receiver["indirect_stack_alias_writes_excluded"] or
+                  receiver["getter_object_lifetime_and_pixel_ownership_verified"] or
+                  receiver["live_camera_YCC_type_or_scan_mode_verified"] or
+                  receiver["native_camera_dma_cache_coherency_verified"] or
+                  receiver["firmware_flash_permitted"]):
+                  raise SystemExit("REJECT FW YCC getter R0 receiver source evidence")
+              print("FW114_CYCC_RECEIVER_SUMMARY",version,
+                    "direct_slot_writes",receiver["direct_frame_slot_store_witnesses"],
+                    "only_prologue_direct_write",
+                    receiver["only_one_direct_fp_slot_store_before_getters"],
+                    "all_four_r0_from_incoming_r1_slot",
+                    receiver["four_getter_r0_setup_uses_incoming_r1_frame_slot"])
+              for source_row in receiver["getter_receiver_evidence"]:
+                  print("FW114_CYCC_RECEIVER",version,
+                        source_row["native_getter"],
+                        "call",source_row["callsite"],
+                        "r0_writer",source_row["r0_final_writer_site"],
+                        "opcode",source_row["r0_final_writer_opcode"],
+                        "frame_slot",source_row["r0_frame_slot_offset"],
+                        "matches_incoming_r1_slot",
+                        source_row["same_slot_as_saved_incoming_r1"])
               getter_links=proof["native_getter_return_boolean_paths"]
               if (not getter_links[
                   "four_native_imported_getter_calls_and_r0_r3_paths_verified"
