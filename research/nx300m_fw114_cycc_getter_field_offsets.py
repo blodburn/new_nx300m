@@ -17,10 +17,17 @@ PROVIDER="libmm-type.so"
 TYPE_SITE=0x31d8
 TYPE_SIZE=40
 TYPE_OFFSET=0x20
+SCAN_SITE=0x31b0
+SCAN_SIZE=40
+SCAN_OFFSET=0x1c
 # Exact source-backed GetType A32 function from FW1.14/1.15.
 TYPE_WORDS=(
     0xe52db004,0xe28db000,0xe24dd00c,0xe50b0008,0xe51b3008,
     0xe5933020,0xe1a00003,0xe28bd000,0xe8bd0800,0xe12fff1e,
+)
+SCAN_WORDS=(
+    0xe52db004,0xe28db000,0xe24dd00c,0xe50b0008,0xe51b3008,
+    0xe593301c,0xe1a00003,0xe28bd000,0xe8bd0800,0xe12fff1e,
 )
 FRAME=(0xe52db004,0xe28db000,0xe24dd00c,0xe50b0008,0xe51b3008)
 EPILOGUE=(0xe1a00003,0xe28bd000,0xe8bd0800,0xe12fff1e)
@@ -69,10 +76,10 @@ def inspect_method(method:dict, name:str)->dict:
         words.append(op)
     if body.get("direct_ARM_BL_edges") or body.get("register_indirect_branches"):
         raise ValueError("CYcc getter has unmodeled call or register branch")
-    if name=="CYcc::GetType()" and (
-        address!=TYPE_SITE or size!=TYPE_SIZE or tuple(words)!=TYPE_WORDS
-    ):
-        raise ValueError("Actual FW1.14/1.15 GetType field source changed")
+    pinned=(TYPE_SITE,TYPE_SIZE,TYPE_WORDS) if name==GETTERS[0] else (
+        SCAN_SITE,SCAN_SIZE,SCAN_WORDS)
+    if (address,size,tuple(words))!=pinned:
+        raise ValueError(f"Actual FW1.14/1.15 {name} field source changed")
 
     # Generic, fail-closed O0 GCC-like trivial getter. A scan-mode getter
     # can be reported as unsupported without pretending to know its field.
@@ -84,10 +91,9 @@ def inspect_method(method:dict, name:str)->dict:
         load["kind"]=="LDR" and load["condition"]==14 and
         load["base_register"]==3 and load["data_register"]==3 and
         0<=load["offset"]<=256)
-    if name=="CYcc::GetType()" and (
-        not direct or load["offset"]!=TYPE_OFFSET
-    ):
-        raise ValueError("GetType no longer reads CYcc this+0x20")
+    expected_offset=TYPE_OFFSET if name==GETTERS[0] else SCAN_OFFSET
+    if not direct or load["offset"]!=expected_offset:
+        raise ValueError(f"{name} changed CYcc field offset")
     return {
         "native_getter":name,
         "provider_elf":PROVIDER,
@@ -132,8 +138,8 @@ def compare_versions(fw114:dict,fw115:dict)->dict:
         "GetType_object_field_plus32_verified":all(
             result[v][GETTERS[0]]["field_offset_from_this_bytes"]==32
             for v in ("fw114","fw115")),
-        "GetScanMode_object_field_offset_verified":all(
-            result[v][GETTERS[1]]["trivial_direct_field_return_pattern_verified"]
+        "GetScanMode_object_field_plus28_verified":all(
+            result[v][GETTERS[1]]["field_offset_from_this_bytes"]==28
             for v in ("fw114","fw115")),
         "live_getter_results_or_enum_semantics_verified":False,
         "physical_camera_buffer_format_or_stride_verified":False,
