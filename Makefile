@@ -32,6 +32,8 @@ test: multimodel-test
 	@python3 research/test_nx300m_fw114_ycc_getter_receiver_sources.py
 	@python3 research/test_nx300m_fw114_photo_buffer_lifetime.py
 	@python3 research/test_nx300m_fw114_cycc_provider_probe.py
+	@python3 research/test_nx300m_fw114_cycc_getter_field_offsets.py
+	@python3 research/test_nx300m_fw114_cycc_constructor_type_scan_initializers.py
 	@python3 research/test_nx300m_fw114_pool_slot8_writer_audit.py
 	@python3 research/test_nx300m_fw114_pool_mmap_size_contract.py
 	@python3 research/test_nx300m_fw114_sysmmap_provider_audit.py

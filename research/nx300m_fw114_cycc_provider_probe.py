@@ -24,6 +24,7 @@ NAMES=("libmm-type.so","libmm-photo.so","libcapture-fw-slpcam.so",
 NEEDLES=(
     "CYcc::~CYcc()",
     "CYcc::GetType()",
+    "CYcc::GetScanMode()",
     "CYcc::GetY0()",
     "CMemoryPool::GetAddr(",
     "CMemoryPool::GetInstance()",
@@ -69,6 +70,7 @@ CODE_TARGETS=(
     "CMemoryPool::GetAddr(",
     "CMemoryPool::GetInstance()",
     "CYcc::GetType()",
+    "CYcc::GetScanMode()",
 )
 MAX_ARM_WORDS=170
 

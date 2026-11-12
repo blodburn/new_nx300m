@@ -44,6 +44,17 @@ flashing remain explicitly unsupported.
 
 Host-only [Y/C420 + RGB manifest validation](docs/NX300M_CAPTURE_EVIDENCE_PREFLIGHT_20261102.md) checks three externally copied files, declared geometry, size and independent SHA-256 before experimental color-model analysis. It always refuses to certify same-stage camera provenance, NX300M native layout, ABI or firmware flash safety. Run `python3 research/test_nx300m_capture_manifest_gate.py` to reproduce 17 synthetic cases.
 
+## FW1.14 native CYcc getter fields and constructor initialization (2026-11-12)
+
+Both extracted FW1.14/FW1.15 `libmm-type.so` binaries contain exact
+10-instruction getters: `CYcc::GetType()` loads object `+0x20`, and
+`CYcc::GetScanMode()` loads object `+0x1c`. A single
+`CYcc(sImgSize,unsigned long)` constructor has direct ARM writes of
+`type=0` at `+0x20` and `scan_mode=1` at `+0x1c`.
+Offline CI cross-checks native getter and constructor instructions.
+This is **not** a runtime enum, DMA/format, or camera firmware proof.
+See [field-offset/constructor ARM evidence](docs/NX300M_FW114_CYCC_GETTERS_CONSTRUCTOR_FIELDS_20261112.md).
+
 ## FW1.14 CYcc receiver argument tracing (2026-11-10)
 
 A new offline ARM32 audit traces the four native CYcc getter receiver
