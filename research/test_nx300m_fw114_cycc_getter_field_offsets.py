@@ -31,15 +31,13 @@ def provider(type_words=None,scan_words=None):
     if type_words is None:
         type_words=m.TYPE_WORDS
     if scan_words is None:
-        scan_words=(
-            *m.FRAME,0xe5933024,*m.EPILOGUE
-        )
+        scan_words=m.SCAN_WORDS
     return {"provider_elfs":{
         "libmm-type.so":{
             "present":True,
             "target_symbols":[
                 method(m.GETTERS[0],type_words,m.TYPE_SITE),
-                method(m.GETTERS[1],scan_words,0x33a0),
+                method(m.GETTERS[1],scan_words,m.SCAN_SITE),
             ],
         },
     }}
@@ -63,10 +61,10 @@ class CyccGetterFieldTests(unittest.TestCase):
         self.assertTrue(proof["same_GetType_code"])
         self.assertTrue(proof["same_GetScanMode_code"])
         self.assertTrue(proof["GetType_object_field_plus32_verified"])
-        self.assertTrue(proof["GetScanMode_object_field_offset_verified"])
+        self.assertTrue(proof["GetScanMode_object_field_plus28_verified"])
         self.assertEqual(
             proof["fw114"][m.GETTERS[1]]["field_offset_from_this_bytes"],
-            36
+            28
         )
         self.assertFalse(proof["live_getter_results_or_enum_semantics_verified"])
         self.assertFalse(proof["native_DMA_cache_coherency_verified"])
@@ -104,12 +102,8 @@ class CyccGetterFieldTests(unittest.TestCase):
 
     def test_unknown_scanmode_pattern_does_not_invent_field_offset(self):
         words=(*m.FRAME,0xe1a03004,*m.EPILOGUE)
-        x=m.compare_versions(provider(scan_words=words),provider(scan_words=words))
-        self.assertFalse(x["GetScanMode_object_field_offset_verified"])
-        self.assertIsNone(
-            x["fw114"][m.GETTERS[1]]["field_offset_from_this_bytes"]
-        )
-        self.assertFalse(x["physical_camera_buffer_format_or_stride_verified"])
+        with self.assertRaisesRegex(ValueError,"GetScanMode"):
+            m.compare_versions(provider(scan_words=words),provider(scan_words=words))
 
     def test_non_contiguous_arm_code_and_invalid_bounds_rejected(self):
         x=provider()
@@ -126,10 +120,10 @@ class CyccGetterFieldTests(unittest.TestCase):
 
     def test_gettype_and_scanmode_byte_hashes_differ_only_when_changed(self):
         altered=( *m.FRAME,0xe5933028,*m.EPILOGUE)
-        x=m.compare_versions(provider(),provider(scan_words=altered))
-        self.assertTrue(x["same_GetType_code"])
-        self.assertFalse(x["same_GetScanMode_code"])
-        self.assertTrue(x["GetScanMode_object_field_offset_verified"])
+        with self.assertRaisesRegex(ValueError,"GetScanMode"):
+            m.compare_versions(provider(),provider(scan_words=altered))
+        x=m.compare_versions(provider(),provider())
+        self.assertTrue(x["same_GetScanMode_code"])
         self.assertFalse(x["live_getter_results_or_enum_semantics_verified"])
 
 
